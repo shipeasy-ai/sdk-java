@@ -54,4 +54,10 @@ jobs:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: mvn -B -P release deploy
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ] || [ -z "$CENTRAL_USERNAME" ]; then
+            echo "::warning::Maven Central credentials not configured — skipping publish. Required secrets: GPG_PRIVATE_KEY, GPG_PASSPHRASE, CENTRAL_USERNAME, CENTRAL_PASSWORD."
+            exit 0
+          fi
+          mvn -B -P release deploy
