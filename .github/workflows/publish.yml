@@ -1,0 +1,57 @@
+name: Publish
+
+# HARD RULE: never publish manually. Bump the <version> in pom.xml, push
+# to main, and this workflow handles Maven Central via the Central Portal.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: GPG_PASSPHRASE
+
+      - run: mvn -B test
+
+      - name: Read package version
+        id: ver
+        run: |
+          VER=$(mvn -q help:evaluate -Dexpression=project.version -DforceStdout)
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Check if version already on Maven Central
+        id: check
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://repo1.maven.org/maven2/ai/shipeasy/shipeasy/${{ steps.ver.outputs.version }}/shipeasy-${{ steps.ver.outputs.version }}.pom")
+          if [ "$STATUS" = "200" ]; then
+            echo "Already published: ai.shipeasy:shipeasy:${{ steps.ver.outputs.version }}"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy to Central Portal
+        if: steps.check.outputs.skip != '1'
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: mvn -B -P release deploy
