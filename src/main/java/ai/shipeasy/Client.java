@@ -37,13 +37,22 @@ public final class Client implements AutoCloseable {
     private volatile int pollIntervalSec = 30;
     private volatile boolean initialized = false;
     private ScheduledFuture<?> task;
+    private final Telemetry telemetry;
 
-    public Client(String apiKey) { this(apiKey, null); }
+    public Client(String apiKey) { this(apiKey, null, "prod", false); }
 
-    public Client(String apiKey, String baseUrl) {
+    public Client(String apiKey, String baseUrl) { this(apiKey, baseUrl, "prod", false); }
+
+    /**
+     * @param env              published env reported in usage telemetry ("prod" default)
+     * @param disableTelemetry turn off per-evaluation usage beacons (ON by default)
+     */
+    public Client(String apiKey, String baseUrl, String env, boolean disableTelemetry) {
         this.apiKey = apiKey;
         this.baseUrl = baseUrl == null ? DEFAULT_BASE_URL : baseUrl.replaceAll("/$", "");
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        this.telemetry = new Telemetry(
+            Telemetry.DEFAULT_TELEMETRY_URL, apiKey, "server", env, disableTelemetry, this.http);
     }
 
     public void init() throws IOException, InterruptedException {
@@ -64,6 +73,7 @@ public final class Client implements AutoCloseable {
 
     @SuppressWarnings("unchecked")
     public boolean getFlag(String name, Map<String, Object> user) {
+        telemetry.emit("gate", name);
         Map<String, Object> blob = flagsBlob;
         if (blob == null) return false;
         Map<String, Object> gates = (Map<String, Object>) blob.get("gates");
@@ -72,6 +82,7 @@ public final class Client implements AutoCloseable {
 
     @SuppressWarnings("unchecked")
     public Object getConfig(String name) {
+        telemetry.emit("config", name);
         Map<String, Object> blob = flagsBlob;
         if (blob == null) return null;
         Map<String, Object> configs = (Map<String, Object>) blob.get("configs");
@@ -82,6 +93,7 @@ public final class Client implements AutoCloseable {
 
     @SuppressWarnings("unchecked")
     public ExperimentResult getExperiment(String name, Map<String, Object> user, Object defaultParams) {
+        telemetry.emit("experiment", name);
         Map<String, Object> flags = flagsBlob;
         Map<String, Object> exps = expsBlob;
         Map<String, Object> exp = null;
