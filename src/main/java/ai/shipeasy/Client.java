@@ -77,7 +77,24 @@ public final class Client implements AutoCloseable {
         Map<String, Object> blob = flagsBlob;
         if (blob == null) return false;
         Map<String, Object> gates = (Map<String, Object>) blob.get("gates");
-        return gates != null && Eval.evalGate((Map<String, Object>) gates.get(name), user);
+        return gates != null && Eval.evalGate((Map<String, Object>) gates.get(name), withAnonId(user));
+    }
+
+    /**
+     * Default {@code anonymous_id} to the request's {@code __se_anon_id}
+     * (resolved by {@link AnonIdFilter}) when the caller passed no explicit
+     * unit. A caller-supplied {@code user_id}/{@code anonymous_id} always wins;
+     * a no-op when no filter ran.
+     */
+    private static Map<String, Object> withAnonId(Map<String, Object> user) {
+        Object uid = user.get("user_id");
+        Object anon = user.get("anonymous_id");
+        boolean hasUnit = (uid != null && !"".equals(uid)) || (anon != null && !"".equals(anon));
+        String current = AnonId.current();
+        if (hasUnit || current == null) return user;
+        Map<String, Object> copy = new HashMap<>(user);
+        copy.put("anonymous_id", current);
+        return copy;
     }
 
     @SuppressWarnings("unchecked")
@@ -101,7 +118,7 @@ public final class Client implements AutoCloseable {
             Map<String, Object> all = (Map<String, Object>) exps.get("experiments");
             if (all != null) exp = (Map<String, Object>) all.get(name);
         }
-        ExperimentResult r = Eval.evalExperiment(exp, flags, exps, user);
+        ExperimentResult r = Eval.evalExperiment(exp, flags, exps, withAnonId(user));
         if (r.params == null) return new ExperimentResult(r.inExperiment, r.group, defaultParams);
         return r;
     }

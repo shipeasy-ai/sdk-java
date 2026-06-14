@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
   <packaging>jar</packaging>
   <name>shipeasy</name>
   <description>Shipeasy server SDK for Java — flags, configs, experiments, metrics.</description>
@@ -24,6 +24,15 @@
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
       <version>2.17.0</version>
+    </dependency>
+    <!-- For AnonIdFilter only. `provided`: the servlet container supplies it at
+         runtime, so it adds nothing to consumers' deployments; non-servlet
+         users never load the filter class. -->
+    <dependency>
+      <groupId>jakarta.servlet</groupId>
+      <artifactId>jakarta.servlet-api</artifactId>
+      <version>6.0.0</version>
+      <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>

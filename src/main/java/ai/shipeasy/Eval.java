@@ -74,9 +74,16 @@ final class Eval {
         List<Map<String, Object>> rules = (List<Map<String, Object>>) gate.get("rules");
         if (rules != null) for (Map<String, Object> r : rules) if (!matchRule(r, user)) return false;
         String uid = userId(user);
-        if (uid == null) return false;
-        String salt = (String) gate.getOrDefault("salt", "");
         Number rolloutPct = (Number) gate.getOrDefault("rolloutPct", 0);
+        if (uid == null) {
+            // No unit id (an unidentified request before any anon id is minted):
+            // a fully-rolled gate is on for everyone, so it can be answered
+            // without bucketing; a fractional rollout needs a stable unit, so
+            // deny until one exists. Rules above still apply, so targeting wins.
+            // See experiment-platform/18-identity-bucketing.md.
+            return rolloutPct.intValue() >= 10000;
+        }
+        String salt = (String) gate.getOrDefault("salt", "");
         return Murmur3.bucket(salt + ":" + uid, 10000) < rolloutPct.intValue();
     }
 
