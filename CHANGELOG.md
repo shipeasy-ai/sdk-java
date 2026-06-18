@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Local-override test utility.** Added `Client.forTesting()` — a no-network,
+  immediately-usable client (telemetry disabled, `init()`/`initOnce()`/`track()`
+  are no-ops, no API key required). New override setters (also usable on a normal
+  client) seed values for tests: `overrideFlag(name, value)`,
+  `overrideConfig(name, value)`, `overrideExperiment(name, group, params)`, and
+  `clearOverrides()`. An override always wins in `getFlag`/`getConfig`/
+  `getExperiment`; `overrideExperiment` makes `getExperiment` return
+  `new ExperimentResult(true, group, params)`. Overrides are stored in
+  `ConcurrentHashMap`s to match the volatile-blob concurrency model.
+
 ## 0.3.0
 
 - **Anonymous bucketing (`__se_anon_id`).** Added `AnonIdFilter`, a servlet

@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Executors;
@@ -39,6 +40,20 @@ public final class Client implements AutoCloseable {
     private ScheduledFuture<?> task;
     private final Telemetry telemetry;
 
+    /**
+     * When {@code true} the client performs zero network I/O — {@link #init()},
+     * {@link #initOnce()} and {@link #track(String, String, Map)} are no-ops and
+     * telemetry is disabled. Set only by {@link #forTesting()}. Evaluation reads
+     * the {@code override*} maps below and never touches a fetched blob.
+     */
+    private final boolean localMode;
+
+    // Local overrides (Statsig-style). Thread-safe to match the volatile-blob
+    // concurrency model; an override, when present, wins over any fetched value.
+    private final Map<String, Boolean> flagOverrides = new ConcurrentHashMap<>();
+    private final Map<String, Object> configOverrides = new ConcurrentHashMap<>();
+    private final Map<String, ExperimentResult> experimentOverrides = new ConcurrentHashMap<>();
+
     public Client(String apiKey) { this(apiKey, null, "prod", false); }
 
     public Client(String apiKey, String baseUrl) { this(apiKey, baseUrl, "prod", false); }
@@ -48,20 +63,71 @@ public final class Client implements AutoCloseable {
      * @param disableTelemetry turn off per-evaluation usage beacons (ON by default)
      */
     public Client(String apiKey, String baseUrl, String env, boolean disableTelemetry) {
+        this(apiKey, baseUrl, env, disableTelemetry, false);
+    }
+
+    private Client(String apiKey, String baseUrl, String env, boolean disableTelemetry, boolean localMode) {
         this.apiKey = apiKey;
         this.baseUrl = baseUrl == null ? DEFAULT_BASE_URL : baseUrl.replaceAll("/$", "");
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        this.localMode = localMode;
+        // localMode forces telemetry off regardless of the flag.
         this.telemetry = new Telemetry(
-            Telemetry.DEFAULT_TELEMETRY_URL, apiKey, "server", env, disableTelemetry, this.http);
+            Telemetry.DEFAULT_TELEMETRY_URL, apiKey, "server", env, disableTelemetry || localMode, this.http);
+        if (localMode) this.initialized = true;
+    }
+
+    /**
+     * A no-network, immediately-usable client for tests. Telemetry is disabled,
+     * {@link #init()}/{@link #initOnce()} never fetch, {@link #track} is a no-op,
+     * and no API key is required. Seed values with {@link #overrideFlag},
+     * {@link #overrideConfig} and {@link #overrideExperiment}.
+     *
+     * <pre>{@code
+     * try (Client c = Client.forTesting()) {
+     *     c.overrideFlag("new_checkout", true);
+     *     assertTrue(c.getFlag("new_checkout", Map.of()));
+     * }
+     * }</pre>
+     */
+    public static Client forTesting() {
+        return new Client(null, null, "test", true, true);
+    }
+
+    /** Force {@code name} to {@code value} for {@link #getFlag}. */
+    public void overrideFlag(String name, boolean value) {
+        flagOverrides.put(name, value);
+    }
+
+    /** Force {@code name} to {@code value} for {@link #getConfig}. */
+    public void overrideConfig(String name, Object value) {
+        configOverrides.put(name, value);
+    }
+
+    /**
+     * Force {@link #getExperiment} for {@code name} to return an in-experiment
+     * result with the given {@code group} and {@code params}.
+     */
+    public void overrideExperiment(String name, String group, Object params) {
+        experimentOverrides.put(name, new ExperimentResult(true, group, params));
+    }
+
+    /** Remove every override previously set on this client. */
+    public void clearOverrides() {
+        flagOverrides.clear();
+        configOverrides.clear();
+        experimentOverrides.clear();
     }
 
     public void init() throws IOException, InterruptedException {
+        if (localMode) return;
         fetchAll();
         initialized = true;
         scheduleNext();
     }
 
     public void initOnce() throws IOException, InterruptedException {
+        if (localMode) return;
         if (initialized) return;
         fetchAll();
         initialized = true;
@@ -73,6 +139,8 @@ public final class Client implements AutoCloseable {
 
     @SuppressWarnings("unchecked")
     public boolean getFlag(String name, Map<String, Object> user) {
+        Boolean override = flagOverrides.get(name);
+        if (override != null) return override;
         telemetry.emit("gate", name);
         Map<String, Object> blob = flagsBlob;
         if (blob == null) return false;
@@ -99,6 +167,8 @@ public final class Client implements AutoCloseable {
 
     @SuppressWarnings("unchecked")
     public Object getConfig(String name) {
+        Object override = configOverrides.get(name);
+        if (override != null) return override;
         telemetry.emit("config", name);
         Map<String, Object> blob = flagsBlob;
         if (blob == null) return null;
@@ -110,6 +180,8 @@ public final class Client implements AutoCloseable {
 
     @SuppressWarnings("unchecked")
     public ExperimentResult getExperiment(String name, Map<String, Object> user, Object defaultParams) {
+        ExperimentResult override = experimentOverrides.get(name);
+        if (override != null) return override;
         telemetry.emit("experiment", name);
         Map<String, Object> flags = flagsBlob;
         Map<String, Object> exps = expsBlob;
@@ -124,6 +196,7 @@ public final class Client implements AutoCloseable {
     }
 
     public void track(String userId, String eventName, Map<String, Object> properties) {
+        if (localMode) return;
         Map<String, Object> event = new HashMap<>();
         event.put("type", "metric");
         event.put("event_name", eventName);

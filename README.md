@@ -57,3 +57,38 @@ http4k, Javalin) can use the `AnonId` primitives directly. An explicit
 the browser SDK buckets identically; a request with **no** unit still resolves a
 fully-rolled (100%) gate as on. Cookie name + format are a cross-SDK contract —
 see `18-identity-bucketing.md`.
+
+## Testing
+
+`Client.forTesting()` returns a no-network client for unit tests: telemetry is
+disabled, `init()`/`initOnce()` and `track()` are no-ops (they never reach the
+network), and **no API key is required**. Seed each entity with the `override*`
+setters; an override always wins over any fetched value, and `clearOverrides()`
+resets them. The setters are also callable on a normal `Client`.
+
+```java
+import ai.shipeasy.Client;
+import ai.shipeasy.ExperimentResult;
+import java.util.Map;
+
+try (Client c = Client.forTesting()) {
+    // Flags
+    c.overrideFlag("new_checkout", true);
+    boolean enabled = c.getFlag("new_checkout", Map.of()); // true
+
+    // Configs (any JSON-shaped value)
+    c.overrideConfig("billing_copy", Map.of("title", "Hello"));
+    Object cfg = c.getConfig("billing_copy"); // {title=Hello}
+
+    // Experiments → ExperimentResult(true, group, params)
+    c.overrideExperiment("checkout_button", "treatment", Map.of("color", "green"));
+    ExperimentResult r = c.getExperiment("checkout_button", Map.of(),
+        Map.of("color", "blue"));
+    // r.inExperiment == true, r.group == "treatment", r.params == {color=green}
+
+    // track() is a no-op here — no key, no network call
+    c.track("u_123", "purchase", Map.of("amount", 49));
+
+    c.clearOverrides(); // back to default (no-override) behavior
+}
+```
