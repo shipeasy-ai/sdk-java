@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Default values on `getFlag`/`getConfig`.** Added overloads
+  `getFlag(name, user, defaultValue)` and `getConfig(name, defaultValue)`. The
+  default is returned only when the value cannot be resolved (client not
+  initialized, or the key is absent) — never when a flag evaluates to `false`.
+- **Evaluation detail.** Added `FlagDetail` (`value()`/`reason()`) with reason
+  constants (`OVERRIDE`, `CLIENT_NOT_READY`, `FLAG_NOT_FOUND`, `OFF`,
+  `RULE_MATCH`, `DEFAULT`) and `getFlagDetail(name, user)`. The reason is
+  computed at the SDK boundary without modifying the canonical `Eval.evalGate`;
+  the "gate" usage beacon fires exactly once per call and never on `OVERRIDE`.
+  `getFlag(name, user)` now delegates to `getFlagDetail(...).value()`.
+- **Change listeners.** Added `onChange(Runnable)` returning a cancel
+  `Runnable`. Listeners fire after a background poll applies new data (200, not
+  304); never in local/test/snapshot mode. Each listener is invoked in a
+  try/catch (logged on throw) and stored in a `CopyOnWriteArrayList`.
+- **Offline file data source.** Added `Client.fromFile(path)` and
+  `Client.fromSnapshot(flags, experiments)` — no-network clients backed by a
+  captured `{ "flags": ..., "experiments": ... }` snapshot. Evaluations run the
+  real eval against the snapshot; `override*` values apply on top.
 - **Local-override test utility.** Added `Client.forTesting()` — a no-network,
   immediately-usable client (telemetry disabled, `init()`/`initOnce()`/`track()`
   are no-ops, no API key required). New override setters (also usable on a normal

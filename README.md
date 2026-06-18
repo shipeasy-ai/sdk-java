@@ -58,6 +58,80 @@ the browser SDK buckets identically; a request with **no** unit still resolves a
 fully-rolled (100%) gate as on. Cookie name + format are a cross-SDK contract —
 see `18-identity-bucketing.md`.
 
+## Default values
+
+`getFlag`/`getConfig` have default-value overloads. The default is returned
+**only when the value cannot be resolved** — the client is not initialized yet
+or the key is absent — never when a flag legitimately evaluates to `false`:
+
+```java
+// returns `true` only if the flag is missing or the client isn't ready;
+// a flag that evaluates to false returns false (not the default).
+boolean enabled = c.getFlag("new_checkout", Map.of("user_id", "u_123"), true);
+
+// returns the fallback when the config key is absent.
+Object copy = c.getConfig("billing_copy", Map.of("title", "Default"));
+```
+
+## Evaluation detail
+
+`getFlagDetail` returns the resolved value together with the `reason` it
+resolved that way, for logging and debugging:
+
+```java
+FlagDetail d = c.getFlagDetail("new_checkout", Map.of("user_id", "u_123"));
+d.value();   // boolean
+d.reason();  // one of the FlagDetail.* reason constants
+```
+
+The reason is one of:
+
+| Reason             | Meaning                                                |
+| ------------------ | ------------------------------------------------------ |
+| `OVERRIDE`         | An override was set (short-circuits; no telemetry).    |
+| `CLIENT_NOT_READY` | No blob fetched yet (not initialized).                 |
+| `FLAG_NOT_FOUND`   | The flag is not present in the fetched blob.           |
+| `OFF`              | The flag is disabled or killswitched.                  |
+| `RULE_MATCH`       | The flag evaluated to `true` via its rules/rollout.    |
+| `DEFAULT`          | The flag is on but evaluated to `false` for this user. |
+
+`getFlag(name, user)` is just `getFlagDetail(name, user).value()`.
+
+## Change listeners
+
+Register a listener that fires after a background poll applies **new** data
+(an HTTP 200, not a 304). `onChange` returns a cancel `Runnable`:
+
+```java
+Runnable cancel = c.onChange(() -> log.info("flags updated"));
+// ... later
+cancel.run(); // unsubscribe
+```
+
+Listeners never fire in local/test/snapshot mode (those do no polling) and a
+throwing listener is isolated — it's logged, others still run.
+
+## Offline snapshot
+
+Run fully offline against a captured snapshot — no network, real evaluation.
+`fromFile` reads a JSON file of the shape
+`{ "flags": <body of /sdk/flags>, "experiments": <body of /sdk/experiments> }`;
+`fromSnapshot` takes the same two blobs in memory:
+
+```java
+try (Client c = Client.fromFile("snapshot.json")) {
+    boolean on = c.getFlag("new_checkout", Map.of("user_id", "u_123"));
+}
+
+try (Client c = Client.fromSnapshot(flagsBlob, experimentsBlob)) {
+    Object cfg = c.getConfig("billing_copy", "fallback");
+}
+```
+
+Snapshot clients are no-network like `forTesting()` — `init()`/`initOnce()`/
+`track()` are no-ops, telemetry is off, and `override*` values apply on top of
+the snapshot.
+
 ## Testing
 
 `Client.forTesting()` returns a no-network client for unit tests: telemetry is

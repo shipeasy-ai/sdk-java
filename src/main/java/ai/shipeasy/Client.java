@@ -7,12 +7,15 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Executors;
@@ -54,6 +57,10 @@ public final class Client implements AutoCloseable {
     private final Map<String, Object> configOverrides = new ConcurrentHashMap<>();
     private final Map<String, ExperimentResult> experimentOverrides = new ConcurrentHashMap<>();
 
+    // Change listeners fired after a background poll applies NEW (200, not 304)
+    // data. Thread-safe to match the volatile-blob concurrency model.
+    private final CopyOnWriteArrayList<Runnable> changeListeners = new CopyOnWriteArrayList<>();
+
     public Client(String apiKey) { this(apiKey, null, "prod", false); }
 
     public Client(String apiKey, String baseUrl) { this(apiKey, baseUrl, "prod", false); }
@@ -92,6 +99,49 @@ public final class Client implements AutoCloseable {
      */
     public static Client forTesting() {
         return new Client(null, null, "test", true, true);
+    }
+
+    /**
+     * A no-network client backed by a JSON snapshot file. The file is the
+     * shape {@code { "flags": <body of /sdk/flags>, "experiments": <body of
+     * /sdk/experiments> }}. The client performs zero network I/O (like
+     * {@link #forTesting()}): {@link #init()}/{@link #initOnce()}/{@link #track}
+     * are no-ops and telemetry is off, but evaluations run the real eval against
+     * the loaded blobs and {@code override*} values still apply on top.
+     *
+     * <pre>{@code
+     * try (Client c = Client.fromFile("snapshot.json")) {
+     *     boolean on = c.getFlag("new_checkout", Map.of("user_id", "u_123"));
+     * }
+     * }</pre>
+     */
+    public static Client fromFile(String path) throws IOException {
+        Client c = new Client(null, null, "test", true, true);
+        Map<String, Object> root = c.mapper.readValue(Files.readAllBytes(Path.of(path)), Map.class);
+        c.loadSnapshot(root.get("flags"), root.get("experiments"));
+        return c;
+    }
+
+    /**
+     * A no-network client backed by in-memory snapshot blobs. {@code flags} is
+     * the parsed body of {@code /sdk/flags} (with {@code gates}/{@code configs}
+     * keys) and {@code experiments} the parsed body of {@code /sdk/experiments}
+     * (with {@code experiments}/{@code universes} keys); either may be
+     * {@code null}. Same no-network semantics as {@link #fromFile(String)}.
+     */
+    public static Client fromSnapshot(Map<String, Object> flags, Map<String, Object> experiments) {
+        Client c = new Client(null, null, "test", true, true);
+        c.loadSnapshot(flags, experiments);
+        return c;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void loadSnapshot(Object flags, Object experiments) {
+        synchronized (lock) {
+            this.flagsBlob = flags instanceof Map ? (Map<String, Object>) flags : null;
+            this.expsBlob = experiments instanceof Map ? (Map<String, Object>) experiments : null;
+        }
+        this.initialized = true;
     }
 
     /** Force {@code name} to {@code value} for {@link #getFlag}. */
@@ -137,15 +187,55 @@ public final class Client implements AutoCloseable {
         scheduler.shutdownNow();
     }
 
-    @SuppressWarnings("unchecked")
     public boolean getFlag(String name, Map<String, Object> user) {
+        return getFlagDetail(name, user).value();
+    }
+
+    /**
+     * Evaluate {@code name} and return the resolved value plus the
+     * {@code reason} it resolved that way (a {@link FlagDetail} reason
+     * constant). Emits the "gate" usage beacon exactly once (never on an
+     * {@code OVERRIDE}). The canonical {@link Eval#evalGate} is not modified;
+     * the {@code OFF} vs {@code DEFAULT} distinction is computed here at the
+     * boundary by reading the same {@code enabled}/{@code killswitch} fields
+     * {@code evalGate} reads.
+     */
+    @SuppressWarnings("unchecked")
+    public FlagDetail getFlagDetail(String name, Map<String, Object> user) {
         Boolean override = flagOverrides.get(name);
-        if (override != null) return override;
+        if (override != null) return new FlagDetail(override, FlagDetail.OVERRIDE);
+
         telemetry.emit("gate", name);
+
         Map<String, Object> blob = flagsBlob;
-        if (blob == null) return false;
+        if (blob == null) return new FlagDetail(false, FlagDetail.CLIENT_NOT_READY);
+
         Map<String, Object> gates = (Map<String, Object>) blob.get("gates");
-        return gates != null && Eval.evalGate((Map<String, Object>) gates.get(name), withAnonId(user));
+        Map<String, Object> gate = gates == null ? null : (Map<String, Object>) gates.get(name);
+        if (gate == null) return new FlagDetail(false, FlagDetail.FLAG_NOT_FOUND);
+
+        // evalGate reads gate.killswitch and gate.enabled; a disabled (or
+        // killswitched) gate is OFF, not DEFAULT.
+        if (Eval.enabled(gate.get("killswitch")) || !Eval.enabled(gate.get("enabled"))) {
+            return new FlagDetail(false, FlagDetail.OFF);
+        }
+
+        boolean value = Eval.evalGate(gate, withAnonId(user));
+        return new FlagDetail(value, value ? FlagDetail.RULE_MATCH : FlagDetail.DEFAULT);
+    }
+
+    /**
+     * As {@link #getFlag(String, Map)} but returns {@code defaultValue} only
+     * when the flag <em>cannot</em> be evaluated (the client is not initialized
+     * or the flag is not in the blob) — never when it evaluates to {@code false}.
+     */
+    public boolean getFlag(String name, Map<String, Object> user, boolean defaultValue) {
+        FlagDetail d = getFlagDetail(name, user);
+        String r = d.reason();
+        if (FlagDetail.CLIENT_NOT_READY.equals(r) || FlagDetail.FLAG_NOT_FOUND.equals(r)) {
+            return defaultValue;
+        }
+        return d.value();
     }
 
     /**
@@ -176,6 +266,36 @@ public final class Client implements AutoCloseable {
         if (configs == null) return null;
         Map<String, Object> entry = (Map<String, Object>) configs.get(name);
         return entry == null ? null : entry.get("value");
+    }
+
+    /**
+     * As {@link #getConfig(String)} but returns {@code defaultValue} when the
+     * config key is absent (no override and not present in the blob).
+     */
+    public Object getConfig(String name, Object defaultValue) {
+        Object value = getConfig(name);
+        return value == null ? defaultValue : value;
+    }
+
+    /**
+     * Register a {@code listener} invoked after a background poll applies NEW
+     * data (an HTTP 200, not a 304). Returns a {@link Runnable} that
+     * unsubscribes the listener when run. Never fires in local/test/snapshot
+     * mode (those perform no polling).
+     */
+    public Runnable onChange(Runnable listener) {
+        changeListeners.add(listener);
+        return () -> changeListeners.remove(listener);
+    }
+
+    private void fireChangeListeners() {
+        for (Runnable l : changeListeners) {
+            try {
+                l.run();
+            } catch (Exception e) {
+                log.warning("onChange listener threw: " + e.getMessage());
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -212,14 +332,19 @@ public final class Client implements AutoCloseable {
 
     private void scheduleNext() {
         task = scheduler.schedule(() -> {
-            try { fetchAll(); }
+            try {
+                boolean changed = fetchAll();
+                if (changed) fireChangeListeners();
+            }
             catch (Exception e) { log.warning("background poll failed: " + e.getMessage()); }
             finally { scheduleNext(); }
         }, pollIntervalSec, TimeUnit.SECONDS);
     }
 
+    /** @return {@code true} if NEW data (a 200, not a 304) was applied. */
     @SuppressWarnings("unchecked")
-    private void fetchAll() throws IOException, InterruptedException {
+    private boolean fetchAll() throws IOException, InterruptedException {
+        boolean changed = false;
         HttpResponse<byte[]> flagsRes = httpGet("/sdk/flags", flagsEtag);
         String intervalHeader = flagsRes.headers().firstValue("X-Poll-Interval").orElse(null);
         if (intervalHeader != null) {
@@ -230,6 +355,7 @@ public final class Client implements AutoCloseable {
                 flagsRes.headers().firstValue("ETag").ifPresent(e -> flagsEtag = e);
                 flagsBlob = mapper.readValue(flagsRes.body(), Map.class);
             }
+            changed = true;
         } else if (flagsRes.statusCode() != 304) {
             throw new IOException("/sdk/flags: " + flagsRes.statusCode());
         }
@@ -240,9 +366,25 @@ public final class Client implements AutoCloseable {
                 expsRes.headers().firstValue("ETag").ifPresent(e -> expsEtag = e);
                 expsBlob = mapper.readValue(expsRes.body(), Map.class);
             }
+            changed = true;
         } else if (expsRes.statusCode() != 304) {
             throw new IOException("/sdk/experiments: " + expsRes.statusCode());
         }
+        return changed;
+    }
+
+    /**
+     * Test seam: apply raw blob bodies as if a poll returned them and fire
+     * change listeners (unless in local mode). Lets tests drive {@link #onChange}
+     * deterministically without real network. Package-private.
+     */
+    void applyDataForTest(Map<String, Object> flags, Map<String, Object> experiments) {
+        synchronized (lock) {
+            if (flags != null) this.flagsBlob = flags;
+            if (experiments != null) this.expsBlob = experiments;
+        }
+        this.initialized = true;
+        if (!localMode) fireChangeListeners();
     }
 
     private HttpResponse<byte[]> httpGet(String path, String etag) throws IOException, InterruptedException {
