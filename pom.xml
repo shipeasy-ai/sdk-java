@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.5.0</version>
+  <version>0.5.1</version>
   <packaging>jar</packaging>
   <name>shipeasy</name>
   <description>Shipeasy server SDK for Java — flags, configs, experiments, metrics.</description>
@@ -105,7 +105,11 @@
           <plugin>
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>
-            <version>0.5.0</version>
+            <!-- 0.5.0 choked parsing the Central Portal status response after
+                 upload (Unrecognized field "warnings"); 0.11.0 tracks the
+                 current API. The artifact uploads fine on either; this fixes the
+                 wait-until-published poll. -->
+            <version>0.11.0</version>
             <extensions>true</extensions>
             <configuration>
               <publishingServerId>central</publishingServerId>
