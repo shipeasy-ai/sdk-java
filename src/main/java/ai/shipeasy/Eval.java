@@ -30,6 +30,23 @@ final class Eval {
         return v == null ? null : v.toString();
     }
 
+    /**
+     * Resolve the bucketing identifier. With {@code bucketBy} set (e.g.
+     * {@code company_id}) the corresponding user attribute drives bucketing so a
+     * whole org moves together; a non-empty String is used verbatim and a Number
+     * is stringified ({@code 42 -> "42"}). Otherwise (unset, or the attribute is
+     * absent/empty/an unsupported type) fall back to {@code user_id ?? anonymous_id}.
+     * Mirrors {@code pickIdentifier} in packages/core/src/eval/gate.ts.
+     */
+    static String pickIdentifier(Map<String, Object> user, String bucketBy) {
+        if (bucketBy != null && !bucketBy.isEmpty()) {
+            Object v = user.get(bucketBy);
+            if (v instanceof String && !((String) v).isEmpty()) return (String) v;
+            if (v instanceof Number) return String.valueOf(v);
+        }
+        return userId(user);
+    }
+
     @SuppressWarnings("unchecked")
     static boolean matchRule(Map<String, Object> rule, Map<String, Object> user) {
         String attr = (String) rule.get("attr");
@@ -102,7 +119,10 @@ final class Eval {
             if (gate == null || !evalGate(gate, user)) return NOT_IN;
         }
 
-        String uid = userId(user);
+        // Bucket on exp.bucketBy (e.g. company_id) when set, else user_id/anonymous_id.
+        // Holdout, allocation, and group all hash on the SAME unit so a whole org
+        // moves together. No resolvable unit -> not enrolled.
+        String uid = pickIdentifier(user, (String) exp.get("bucketBy"));
         if (uid == null) return NOT_IN;
 
         String universeName = (String) exp.get("universe");

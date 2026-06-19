@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Per-experiment `bucketBy`.** Experiment evaluation now honors an optional
+  `bucketBy` attribute (JSON `bucketBy`), bucketing on that user attribute (e.g.
+  `company_id` to keep a whole org on one variant) instead of the individual.
+  When set and the attribute is a non-empty string (or a number, stringified)
+  it drives the holdout, allocation, and group hashes so all three agree;
+  otherwise it falls back to `user_id ?? anonymous_id`. Mirrors `pickIdentifier`
+  in the canonical core implementation.
 - **Default values on `getFlag`/`getConfig`.** Added overloads
   `getFlag(name, user, defaultValue)` and `getConfig(name, defaultValue)`. The
   default is returned only when the value cannot be resolved (client not
