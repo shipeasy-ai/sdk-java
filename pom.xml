@@ -50,6 +50,17 @@
       <version>6.0.0</version>
       <scope>provided</scope>
     </dependency>
+    <!-- For ShipeasyProvider only (OpenFeature server adapter). `provided`: the
+         consuming app that uses OpenFeature supplies the SDK on its own
+         classpath, so it adds nothing to non-OpenFeature consumers' deployments
+         and the provider class is never loaded unless they opt in. It is still
+         on this project's compile + test classpath. -->
+    <dependency>
+      <groupId>dev.openfeature</groupId>
+      <artifactId>sdk</artifactId>
+      <version>1.13.0</version>
+      <scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

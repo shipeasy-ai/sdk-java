@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **OpenFeature provider.** Added `ai.shipeasy.openfeature.ShipeasyProvider`, an
+  implementation of the OpenFeature server `dev.openfeature.sdk.FeatureProvider`
+  contract that wraps a `Client`. Metadata name is `shipeasy`;
+  `initialize()` calls `client.initOnce()`. Boolean evaluation routes to
+  `getFlagDetail` and maps the Shipeasy reason onto OpenFeature
+  (`RULE_MATCH→TARGETING_MATCH`, `DEFAULT→DEFAULT`, `OFF→DISABLED`,
+  `OVERRIDE→STATIC`, `FLAG_NOT_FOUND→ERROR`+`FLAG_NOT_FOUND`,
+  `CLIENT_NOT_READY→ERROR`+`PROVIDER_NOT_READY`); on an error code the default
+  is returned. String/integer/double/object evaluation route to `getConfig`:
+  absent → default with reason `DEFAULT`, wrong type → default with errorCode
+  `TYPE_MISMATCH`, present + right type → value with reason `TARGETING_MATCH`.
+  `targetingKey` becomes `user_id` and other context attributes are carried
+  through for targeting. `dev.openfeature:sdk` is a `provided`-scope dependency
+  — the consuming OpenFeature app supplies it, so it adds nothing to
+  non-OpenFeature consumers. Mirrors the canonical
+  `@shipeasy/sdk/openfeature-server` provider.
 - **Private attributes.** Added `Client.privateAttributes(List<String>)` — a
   fluent setter naming attributes usable for targeting but never persisted in
   analytics (LD/Statsig `privateAttributes`). The server evaluates locally so
