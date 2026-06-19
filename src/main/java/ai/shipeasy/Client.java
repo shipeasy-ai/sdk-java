@@ -51,6 +51,22 @@ public final class Client implements AutoCloseable {
      */
     private final boolean localMode;
 
+    /**
+     * Attribute names usable for targeting but never persisted in analytics
+     * (LD/Statsig {@code privateAttributes}). The server evaluates locally, so
+     * private attrs never leave for evaluation at all; the only egress is
+     * {@code /collect}, and these keys are stripped from every outbound
+     * {@link #track} payload before it is POSTed.
+     */
+    private volatile List<String> privateAttributes;
+
+    /**
+     * Optional sticky-bucketing store (doc 20 §2). When set, {@link #getExperiment}
+     * locks a unit to its first-assigned variant. {@code null} ⇒ deterministic
+     * (fully backward compatible).
+     */
+    private volatile StickyBucketStore stickyStore;
+
     // Local overrides (Statsig-style). Thread-safe to match the volatile-blob
     // concurrency model; an override, when present, wins over any fetched value.
     private final Map<String, Boolean> flagOverrides = new ConcurrentHashMap<>();
@@ -78,6 +94,7 @@ public final class Client implements AutoCloseable {
         this.baseUrl = baseUrl == null ? DEFAULT_BASE_URL : baseUrl.replaceAll("/$", "");
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
         this.localMode = localMode;
+        this.privateAttributes = List.of();
         // localMode forces telemetry off regardless of the flag.
         this.telemetry = new Telemetry(
             Telemetry.DEFAULT_TELEMETRY_URL, apiKey, "server", env, disableTelemetry || localMode, this.http);
@@ -167,6 +184,28 @@ public final class Client implements AutoCloseable {
         flagOverrides.clear();
         configOverrides.clear();
         experimentOverrides.clear();
+    }
+
+    /**
+     * Set the attribute names that are usable for targeting but must never be
+     * persisted in analytics (LD/Statsig {@code privateAttributes}). These keys
+     * are stripped from every outbound {@link #track} payload before it is
+     * POSTed to {@code /collect}. Returns {@code this} for chaining.
+     */
+    public Client privateAttributes(List<String> attrs) {
+        this.privateAttributes = attrs == null ? List.of() : List.copyOf(attrs);
+        return this;
+    }
+
+    /**
+     * Supply a sticky-bucketing store (doc 20 §2). When set, {@link #getExperiment}
+     * locks a unit to its first-assigned variant — changing allocation % or group
+     * weights won't re-bucket enrolled units (changing the experiment salt is the
+     * reshuffle lever). Absent ⇒ deterministic. Returns {@code this} for chaining.
+     */
+    public Client stickyStore(StickyBucketStore store) {
+        this.stickyStore = store;
+        return this;
     }
 
     public void init() throws IOException, InterruptedException {
@@ -310,23 +349,76 @@ public final class Client implements AutoCloseable {
             Map<String, Object> all = (Map<String, Object>) exps.get("experiments");
             if (all != null) exp = (Map<String, Object>) all.get(name);
         }
-        ExperimentResult r = Eval.evalExperiment(exp, flags, exps, withAnonId(user));
+        ExperimentResult r = Eval.evalExperiment(exp, flags, exps, withAnonId(user), stickyStore, name);
         if (r.params == null) return new ExperimentResult(r.inExperiment, r.group, defaultParams);
         return r;
     }
 
+    /** Drop caller-marked private attributes from an outbound props bag. */
+    private Map<String, Object> stripPrivate(Map<String, Object> props) {
+        List<String> priv = privateAttributes;
+        if (props == null || priv.isEmpty()) return props;
+        Map<String, Object> out = new HashMap<>();
+        for (Map.Entry<String, Object> e : props.entrySet()) {
+            if (!priv.contains(e.getKey())) out.put(e.getKey(), e.getValue());
+        }
+        return out;
+    }
+
     public void track(String userId, String eventName, Map<String, Object> properties) {
         if (localMode) return;
+        Map<String, Object> safeProps = stripPrivate(properties);
         Map<String, Object> event = new HashMap<>();
         event.put("type", "metric");
         event.put("event_name", eventName);
         event.put("user_id", userId);
         event.put("ts", Instant.now().toEpochMilli());
-        if (properties != null && !properties.isEmpty()) event.put("properties", properties);
+        if (safeProps != null && !safeProps.isEmpty()) event.put("properties", safeProps);
         Map<String, Object> body = Map.of("events", List.of(event));
         scheduler.execute(() -> {
             try { post("/collect", mapper.writeValueAsBytes(body)); }
             catch (Exception e) { log.warning("track failed: " + e.getMessage()); }
+        });
+    }
+
+    /**
+     * Emit an exposure event for an experiment at the server-side decision point
+     * (parity with the browser's auto-exposure). The server is stateless and
+     * never auto-logs, so call this when you actually present the treatment.
+     * Re-evaluates the experiment for {@code userId}; if the user is enrolled,
+     * POSTs a single {@code {type:"exposure", experiment, group, user_id, ts}}
+     * to {@code /collect}. No-op in test mode or when the user isn't enrolled.
+     */
+    public void logExposure(String userId, String experimentName) {
+        Map<String, Object> user = new HashMap<>();
+        if (userId != null) user.put("user_id", userId);
+        logExposure(user, experimentName);
+    }
+
+    /**
+     * As {@link #logExposure(String, String)} but takes a user attribute map
+     * (so targeting gates and {@code bucketBy} resolve correctly). Re-evaluates
+     * and POSTs one exposure event for an enrolled user. No-op in test mode or
+     * when the user isn't enrolled.
+     */
+    public void logExposure(Map<String, Object> user, String experimentName) {
+        if (localMode) return;
+        Map<String, Object> u = user == null ? Map.of() : user;
+        ExperimentResult r = getExperiment(experimentName, u, null);
+        if (!r.inExperiment) return;
+        Map<String, Object> event = new HashMap<>();
+        event.put("type", "exposure");
+        event.put("experiment", experimentName);
+        event.put("group", r.group);
+        Object uid = u.get("user_id");
+        if (uid != null) event.put("user_id", uid);
+        Object anon = u.get("anonymous_id");
+        if (anon != null) event.put("anonymous_id", anon);
+        event.put("ts", Instant.now().toEpochMilli());
+        Map<String, Object> body = Map.of("events", List.of(event));
+        scheduler.execute(() -> {
+            try { post("/collect", mapper.writeValueAsBytes(body)); }
+            catch (Exception e) { log.warning("logExposure failed: " + e.getMessage()); }
         });
     }
 

@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- **Private attributes.** Added `Client.privateAttributes(List<String>)` — a
+  fluent setter naming attributes usable for targeting but never persisted in
+  analytics (LD/Statsig `privateAttributes`). The server evaluates locally so
+  private attrs never leave for evaluation at all; the only egress is
+  `/collect`, and the listed keys are stripped from every outbound `track()`
+  payload before it is POSTed. Mirrors `stripPrivate` in the canonical TS SDK.
+- **Manual exposure (server).** Added `logExposure(String userId, String
+  experimentName)` and an overload `logExposure(Map<String,Object> user, String
+  experimentName)`. The server never auto-logs: this re-evaluates the experiment
+  and, only when the user is enrolled, POSTs one
+  `{type:"exposure", experiment, group, user_id, ts}` event to `/collect`. No-op
+  in test mode or when the user isn't enrolled. Parity with the browser's
+  auto-exposure.
+- **Sticky bucketing (server).** Added a pluggable `StickyBucketStore`
+  (`Map<String,StickyEntry> get(String unit)` / `void set(String unit, String
+  exp, StickyEntry entry)`), the value type `StickyEntry(group, salt8)`, and an
+  in-memory built-in `InMemoryStickyStore`. Supply one via
+  `Client.stickyStore(store)`; absent ⇒ deterministic (fully backward
+  compatible). Threaded into experiment eval after the holdout, before
+  allocation: a stored entry for `(unit, exp)` whose `salt8` matches the
+  experiment salt's 8-char prefix skips the allocation gate and returns the
+  stored group with no re-pick (so a shrinking allocation keeps enrolled units
+  in); a fresh pick is persisted; a salt mismatch or a missing stored group
+  re-buckets and overwrites. Bucketing unit is the `pickIdentifier`-resolved
+  identifier (honors `bucketBy`). Mirrors `StickyBucketStore` /
+  `createInMemoryStickyStore` in the canonical TS SDK.
 - **Per-experiment `bucketBy`.** Experiment evaluation now honors an optional
   `bucketBy` attribute (JSON `bucketBy`), bucketing on that user attribute (e.g.
   `company_id` to keep a whole org on one variant) instead of the individual.

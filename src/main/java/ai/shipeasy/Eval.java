@@ -104,12 +104,31 @@ final class Eval {
         return Murmur3.bucket(salt + ":" + uid, 10000) < rolloutPct.intValue();
     }
 
-    @SuppressWarnings("unchecked")
     static ExperimentResult evalExperiment(
             Map<String, Object> exp,
             Map<String, Object> flagsBlob,
             Map<String, Object> expsBlob,
             Map<String, Object> user) {
+        return evalExperiment(exp, flagsBlob, expsBlob, user, null, null);
+    }
+
+    /**
+     * As {@link #evalExperiment(Map, Map, Map, Map)} but with optional sticky
+     * bucketing (doc 20 §2). When {@code store} (and {@code expName}) are
+     * supplied, an enrolled unit whose stored salt prefix still matches the
+     * experiment's current salt prefix skips the allocation gate and returns the
+     * stored group without re-running the pick. A fresh pick is persisted to the
+     * store. A salt mismatch or a missing/stale stored group falls through to a
+     * re-bucket + overwrite. {@code null store} ⇒ deterministic (no stickiness).
+     */
+    @SuppressWarnings("unchecked")
+    static ExperimentResult evalExperiment(
+            Map<String, Object> exp,
+            Map<String, Object> flagsBlob,
+            Map<String, Object> expsBlob,
+            Map<String, Object> user,
+            StickyBucketStore store,
+            String expName) {
         if (exp == null || !"running".equals(exp.get("status"))) return NOT_IN;
 
         String targetingGate = (String) exp.get("targetingGate");
@@ -139,17 +158,40 @@ final class Eval {
         }
 
         String salt = (String) exp.getOrDefault("salt", "");
+        List<Map<String, Object>> groups = (List<Map<String, Object>>) exp.getOrDefault("groups", List.of());
+
+        // Sticky short-circuit (doc 20 §2): after the holdout, before allocation.
+        // An enrolled unit whose stored salt prefix still matches skips the
+        // allocation gate (a shrinking allocation keeps it in) and returns the
+        // stored group without re-running the pick.
+        String salt8 = salt.length() >= 8 ? salt.substring(0, 8) : salt;
+        if (store != null && expName != null) {
+            Map<String, StickyEntry> unitEntries = store.get(uid);
+            StickyEntry entry = unitEntries == null ? null : unitEntries.get(expName);
+            if (entry != null && salt8.equals(entry.salt8)) {
+                for (Map<String, Object> g : groups) {
+                    if (entry.group != null && entry.group.equals(g.get("name"))) {
+                        return new ExperimentResult(true, entry.group, g.get("params"));
+                    }
+                }
+                // Stored group gone -> fall through to re-bucket + overwrite.
+            }
+        }
+
         Number allocPct = (Number) exp.getOrDefault("allocationPct", 0);
         if (Murmur3.bucket(salt + ":alloc:" + uid, 10000) >= allocPct.intValue()) return NOT_IN;
 
         int groupHash = Murmur3.bucket(salt + ":group:" + uid, 10000);
-        List<Map<String, Object>> groups = (List<Map<String, Object>>) exp.getOrDefault("groups", List.of());
         int cumulative = 0;
         for (int i = 0; i < groups.size(); i++) {
             Map<String, Object> g = groups.get(i);
             cumulative += ((Number) g.getOrDefault("weight", 0)).intValue();
             if (groupHash < cumulative || i == groups.size() - 1) {
-                return new ExperimentResult(true, (String) g.get("name"), g.get("params"));
+                String groupName = (String) g.get("name");
+                if (store != null && expName != null) {
+                    store.set(uid, expName, new StickyEntry(groupName, salt8));
+                }
+                return new ExperimentResult(true, groupName, g.get("params"));
             }
         }
         return NOT_IN;
