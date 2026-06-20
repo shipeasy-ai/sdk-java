@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.0
+
+- **`see()` structured error reporting.** Added the `see()` grammar mirroring
+  `@shipeasy/sdk` (TS) and the Python SDK. Every handled exception documents its
+  product *consequence*, not just its stack. Instance methods on `Client`:
+  `see(Object problem)`, `seeViolation(String name)` and
+  `controlFlowException(Throwable e)`; a package-level static facade `ai.shipeasy.See`
+  (`See.see`, `See.violation`/`See.seeViolation`, `See.controlFlowException`)
+  dispatches against the last-constructed `Client` (registered automatically in
+  its constructor; `See.setDefaultClient(Client)` is the explicit setter). A
+  global call before any client logs a warning and no-ops — it never throws.
+  The fluent chain `see(e).causesThe("checkout").extras(Map.of(...)).to("use cached prices")`
+  uses `to(outcome)` as the terminal (builds the wire event and fire-and-forgets
+  the POST to `/collect` on the same scheduler as `track()`); `causesThe()` and
+  `extras()` may be called in any order before `to()`, `extras()` merges, and
+  `to()` is idempotent. `controlFlowException(e).because(reason)` marks the
+  throwable expected (queryable via `ControlFlowChain.isExpected(e)`) and reports
+  nothing. Events are `{type:"error", kind, error_type, message, stack?, subject,
+  outcome, extras?, side:"server", env?, sdk_version, ts}` with the documented
+  sanitization (≤20 keys, 200-char string values, drop null, keep
+  String/finite-Number/Boolean), a per-process spam limiter (30s dedup, 25 cap),
+  and private-attribute stripping. No-op in test/local mode like `track()`. Added
+  `Client.VERSION` (`"0.6.0"`) as the single runtime source of `sdk_version`.
+
 ## Unreleased
 
 - **OpenFeature provider.** Added `ai.shipeasy.openfeature.ShipeasyProvider`, an

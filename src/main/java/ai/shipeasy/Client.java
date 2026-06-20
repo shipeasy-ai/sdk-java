@@ -26,6 +26,9 @@ public final class Client implements AutoCloseable {
     private static final Logger log = Logger.getLogger("shipeasy");
     private static final String DEFAULT_BASE_URL = "https://edge.shipeasy.dev";
 
+    /** Single runtime source of the SDK version (used for {@code sdk_version}). */
+    public static final String VERSION = "0.6.0";
+
     private final String apiKey;
     private final String baseUrl;
     private final HttpClient http;
@@ -42,6 +45,16 @@ public final class Client implements AutoCloseable {
     private volatile boolean initialized = false;
     private ScheduledFuture<?> task;
     private final Telemetry telemetry;
+
+    /**
+     * Deployment env, tagged onto {@code see()} error events. Telemetry already
+     * gets env via its own constructor; this stores it for the /collect error
+     * path too.
+     */
+    private final String env;
+
+    /** Per-process spam guard for {@code see()} sends. */
+    private final SeeLimiter seeLimiter = new SeeLimiter();
 
     /**
      * When {@code true} the client performs zero network I/O — {@link #init()},
@@ -94,11 +107,15 @@ public final class Client implements AutoCloseable {
         this.baseUrl = baseUrl == null ? DEFAULT_BASE_URL : baseUrl.replaceAll("/$", "");
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
         this.localMode = localMode;
+        this.env = env;
         this.privateAttributes = List.of();
         // localMode forces telemetry off regardless of the flag.
         this.telemetry = new Telemetry(
             Telemetry.DEFAULT_TELEMETRY_URL, apiKey, "server", env, disableTelemetry || localMode, this.http);
         if (localMode) this.initialized = true;
+        // Register as the default client backing the package-level See.see()
+        // functions (last constructed wins — the analog of TS's shipeasy({key})).
+        See.setDefaultClient(this);
     }
 
     /**
@@ -379,6 +396,59 @@ public final class Client implements AutoCloseable {
             try { post("/collect", mapper.writeValueAsBytes(body)); }
             catch (Exception e) { log.warning("track failed: " + e.getMessage()); }
         });
+    }
+
+    // ---- see() structured error reporting ----
+
+    /**
+     * Report a caught throwable (or a thrown non-throwable problem) via this
+     * client. The terminal {@code .to(outcome)} builds the event and
+     * fire-and-forgets the POST to {@code /collect}.
+     *
+     * <pre>{@code
+     * client.see(e).causesThe("checkout").to("use cached prices");
+     * }</pre>
+     */
+    public SeeChain see(Object problem) {
+        return new SeeChain(problem, this::dispatchSee);
+    }
+
+    /** Report a non-throwable problem (a {@link Violation}) via this client. */
+    public SeeChain seeViolation(String name) {
+        return new SeeChain(new Violation(name), this::dispatchSee);
+    }
+
+    /**
+     * Mark a throwable as expected control flow (reports nothing). The returned
+     * chain's {@code .because(reason)} stamps the throwable; any {@code .extras()}
+     * are local-debug only and never transmitted.
+     */
+    public ControlFlowChain controlFlowException(Throwable e) {
+        return new ControlFlowChain(e);
+    }
+
+    /** Build the wire event for a finalized chain and fire-and-forget the send. */
+    private void dispatchSee(SeeChain chain) {
+        if (localMode) return;
+        try {
+            Map<String, Object> extras = stripPrivate(chain.extras());
+            Map<String, Object> ev = See.buildSeeEvent(
+                chain.problem(),
+                chain.subject(),
+                chain.outcome(),
+                extras,
+                "server",
+                VERSION,
+                env);
+            if (!seeLimiter.shouldSend(ev)) return;
+            Map<String, Object> body = Map.of("events", List.of(ev));
+            scheduler.execute(() -> {
+                try { post("/collect", mapper.writeValueAsBytes(body)); }
+                catch (Exception e) { log.warning("see() send failed: " + e.getMessage()); }
+            });
+        } catch (Exception e) {
+            log.warning("see() dispatch failed: " + e.getMessage());
+        }
     }
 
     /**
