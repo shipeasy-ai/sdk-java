@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,6 +26,12 @@ import java.util.logging.Logger;
 public final class Client implements AutoCloseable {
     private static final Logger log = Logger.getLogger("shipeasy");
     private static final String DEFAULT_BASE_URL = "https://edge.shipeasy.dev";
+    /**
+     * CDN origin serving the static loader scripts ({@code /sdk/bootstrap.js},
+     * {@code /sdk/i18n/loader.js}) — distinct from the edge API the blobs are
+     * fetched from.
+     */
+    private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
     public static final String VERSION = "0.6.0";
@@ -369,6 +376,144 @@ public final class Client implements AutoCloseable {
         ExperimentResult r = Eval.evalExperiment(exp, flags, exps, withAnonId(user), stickyStore, name);
         if (r.params == null) return new ExperimentResult(r.inExperiment, r.group, defaultParams);
         return r;
+    }
+
+    /**
+     * Batch-evaluate every loaded gate, config and experiment for {@code user}
+     * into a bootstrap payload ({@code {flags, configs, experiments,
+     * killswitches}}) keyed to match the browser SDK's
+     * {@code window.__SE_BOOTSTRAP} shape. Local overrides win. Killswitches are
+     * folded into per-gate evaluation, so the standalone {@code killswitches}
+     * map is empty for this SDK. No telemetry (a batch evaluate is not a
+     * per-flag exposure).
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> evaluate(Map<String, Object> user) {
+        Map<String, Object> u = withAnonId(user);
+        Map<String, Object> flags = flagsBlob;
+        Map<String, Object> exps = expsBlob;
+
+        Map<String, Object> outFlags = new LinkedHashMap<>();
+        Map<String, Object> outConfigs = new LinkedHashMap<>();
+        Map<String, Object> outExps = new LinkedHashMap<>();
+
+        if (flags != null) {
+            Map<String, Object> gates = (Map<String, Object>) flags.get("gates");
+            if (gates != null) {
+                for (Map.Entry<String, Object> e : gates.entrySet()) {
+                    Boolean ov = flagOverrides.get(e.getKey());
+                    outFlags.put(e.getKey(),
+                        ov != null ? ov : Eval.evalGate((Map<String, Object>) e.getValue(), u));
+                }
+            }
+            Map<String, Object> configs = (Map<String, Object>) flags.get("configs");
+            if (configs != null) {
+                for (Map.Entry<String, Object> e : configs.entrySet()) {
+                    if (configOverrides.containsKey(e.getKey())) {
+                        outConfigs.put(e.getKey(), configOverrides.get(e.getKey()));
+                        continue;
+                    }
+                    Map<String, Object> entry = (Map<String, Object>) e.getValue();
+                    outConfigs.put(e.getKey(), entry == null ? null : entry.get("value"));
+                }
+            }
+        }
+        if (exps != null) {
+            Map<String, Object> all = (Map<String, Object>) exps.get("experiments");
+            if (all != null) {
+                for (Map.Entry<String, Object> e : all.entrySet()) {
+                    ExperimentResult ov = experimentOverrides.get(e.getKey());
+                    ExperimentResult r = ov != null ? ov
+                        : Eval.evalExperiment((Map<String, Object>) e.getValue(), flags, exps, u, stickyStore, e.getKey());
+                    Map<String, Object> exp = new LinkedHashMap<>();
+                    exp.put("inExperiment", r.inExperiment);
+                    exp.put("group", r.group);
+                    exp.put("params", r.params);
+                    outExps.put(e.getKey(), exp);
+                }
+            }
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("flags", outFlags);
+        out.put("configs", outConfigs);
+        out.put("experiments", outExps);
+        out.put("killswitches", new LinkedHashMap<>());
+        return out;
+    }
+
+    /**
+     * Return the cross-platform SSR bootstrap {@code <script>} tag for a request:
+     * {@code se-bootstrap.js} reads its {@code data-*} attributes and hydrates
+     * {@code window.__SE_BOOTSTRAP} (and writes the anon cookie). No SDK key is
+     * embedded — the server key must never reach the browser.
+     */
+    public String bootstrapScriptTag(Map<String, Object> user, String anonId, String i18nProfile, String baseUrl) {
+        Map<String, Object> payload = evaluate(user);
+        String base = cdnBase(baseUrl);
+        String profile = (i18nProfile == null || i18nProfile.isEmpty()) ? "en:prod" : i18nProfile;
+        StringBuilder sb = new StringBuilder();
+        sb.append("<script src=\"").append(escapeAttr(base + "/sdk/bootstrap.js")).append("\" ");
+        sb.append("data-se-bootstrap ");
+        sb.append(attr("data-flags", json(payload.get("flags")))).append(' ');
+        sb.append(attr("data-configs", json(payload.get("configs")))).append(' ');
+        sb.append(attr("data-experiments", json(payload.get("experiments")))).append(' ');
+        sb.append(attr("data-killswitches", json(payload.get("killswitches")))).append(' ');
+        sb.append(attr("data-i18n-profile", profile)).append(' ');
+        sb.append(attr("data-api-url", base));
+        if (anonId != null && !anonId.isEmpty()) sb.append(' ').append(attr("data-anon-id", anonId));
+        sb.append("></script>");
+        return sb.toString();
+    }
+
+    /** {@link #bootstrapScriptTag(Map, String, String, String)} with defaults. */
+    public String bootstrapScriptTag(Map<String, Object> user) {
+        return bootstrapScriptTag(user, null, "en:prod", null);
+    }
+
+    /** {@link #bootstrapScriptTag(Map, String, String, String)} with an anon id. */
+    public String bootstrapScriptTag(Map<String, Object> user, String anonId) {
+        return bootstrapScriptTag(user, anonId, "en:prod", null);
+    }
+
+    /**
+     * Return the i18n loader {@code <script>} tag. The loader fetches
+     * translations for the profile using the PUBLIC client key (safe to embed
+     * in HTML).
+     */
+    public String i18nScriptTag(String clientKey, String profile, String baseUrl) {
+        String base = cdnBase(baseUrl);
+        String p = (profile == null || profile.isEmpty()) ? "en:prod" : profile;
+        return "<script src=\"" + escapeAttr(base + "/sdk/i18n/loader.js") + "\" "
+            + attr("data-key", clientKey) + " " + attr("data-profile", p) + "></script>";
+    }
+
+    /** {@link #i18nScriptTag(String, String, String)} with the default CDN base. */
+    public String i18nScriptTag(String clientKey, String profile) {
+        return i18nScriptTag(clientKey, profile, null);
+    }
+
+    private static String cdnBase(String override) {
+        String base = (override == null || override.isEmpty()) ? DEFAULT_CDN_BASE : override;
+        return base.replaceAll("/$", "");
+    }
+
+    private String json(Object v) {
+        try {
+            return mapper.writeValueAsString(v);
+        } catch (Exception e) {
+            return "{}";
+        }
+    }
+
+    private static String attr(String name, String value) {
+        return name + "=\"" + escapeAttr(value) + "\"";
+    }
+
+    private static String escapeAttr(String v) {
+        if (v == null) return "";
+        return v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace("\"", "&quot;").replace("'", "&#39;");
     }
 
     /** Drop caller-marked private attributes from an outbound props bag. */
