@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0
+
+- **SSR bootstrap script-tag helpers.** New `Client.evaluate(user)`
+  batch-evaluate (every gate/config/experiment → a `{flags, configs,
+  experiments, killswitches}` payload) plus `bootstrapScriptTag` and
+  `i18nScriptTag` overloads, which emit the cross-platform declarative `<script>`
+  tags carrying the SSR payload as `data-*` attributes. The static
+  `se-bootstrap.js` loader hydrates `window.__SE_BOOTSTRAP` and writes the
+  `__se_anon_id` cookie so the browser buckets identically to the server. **No
+  SDK key is embedded** in the bootstrap tag.
+
 ## 0.6.0
 
 - **`see()` structured error reporting.** Added the `see()` grammar mirroring
