@@ -58,6 +58,29 @@ the browser SDK buckets identically; a request with **no** unit still resolves a
 fully-rolled (100%) gate as on. Cookie name + format are a cross-SDK contract —
 see `18-identity-bucketing.md`.
 
+## Server-side rendering (SSR)
+
+Emit the request's evaluated flags as a declarative `<script>` tag so the
+browser SDK has them on first paint. `bootstrapScriptTag` carries the payload in
+`data-*` attributes (**no key**); the static `se-bootstrap.js` loader hydrates
+`window.__SE_BOOTSTRAP` and writes the `__se_anon_id` cookie so the browser
+buckets identically to the server.
+
+```java
+Map<String, Object> user = Map.of("user_id", "u_123");
+
+// Two tags for the document <head>. The PUBLIC client key (not the server
+// key) goes on the i18n loader tag.
+String head = c.bootstrapScriptTag(user, anonId)
+            + c.i18nScriptTag(clientKey, "en:prod");
+
+// …or get the raw payload ({flags, configs, experiments, killswitches}):
+Map<String, Object> boot = c.evaluate(user);
+```
+
+Overloads let you omit the anon id, or pass `i18nProfile` / `baseUrl`
+(defaults to `https://cdn.shipeasy.ai`).
+
 ## Default values
 
 `getFlag`/`getConfig` have default-value overloads. The default is returned
