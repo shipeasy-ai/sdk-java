@@ -6,7 +6,7 @@ Server SDK for [Shipeasy](https://shipeasy.dev).
 <dependency>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.1.0</version>
+  <version>0.8.0</version>
 </dependency>
 ```
 
