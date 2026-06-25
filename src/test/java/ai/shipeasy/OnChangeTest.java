@@ -14,7 +14,7 @@ class OnChangeTest {
     // unsubscribes it. Driven via the internal apply-data seam (no network).
     @Test
     void onChangeFiresAndCancels() {
-        try (Client c = new Client("k", "https://edge.invalid")) {
+        try (Engine c = new Engine("k", "https://edge.invalid")) {
             AtomicInteger hits = new AtomicInteger();
             Runnable cancel = c.onChange(hits::incrementAndGet);
 
@@ -33,7 +33,7 @@ class OnChangeTest {
     // A throwing listener is isolated: others still fire, no exception escapes.
     @Test
     void onChangeIsolatesThrows() {
-        try (Client c = new Client("k", "https://edge.invalid")) {
+        try (Engine c = new Engine("k", "https://edge.invalid")) {
             AtomicInteger good = new AtomicInteger();
             c.onChange(() -> { throw new RuntimeException("boom"); });
             c.onChange(good::incrementAndGet);
@@ -46,7 +46,7 @@ class OnChangeTest {
     // Applied data is reflected in subsequent evaluations.
     @Test
     void appliedDataIsLive() {
-        try (Client c = new Client("k", "https://edge.invalid")) {
+        try (Engine c = new Engine("k", "https://edge.invalid")) {
             assertEquals(FlagDetail.CLIENT_NOT_READY, c.getFlagDetail("g", Map.of()).reason());
             c.applyDataForTest(
                 Map.of("gates", Map.of("g",
@@ -59,7 +59,7 @@ class OnChangeTest {
     // Listeners never fire in local/snapshot mode (no polling there).
     @Test
     void onChangeNeverFiresInLocalMode() {
-        try (Client c = Client.fromSnapshot(Map.of("gates", Map.of()), null)) {
+        try (Engine c = Engine.fromSnapshot(Map.of("gates", Map.of()), null)) {
             AtomicInteger hits = new AtomicInteger();
             c.onChange(hits::incrementAndGet);
             c.applyDataForTest(Map.of("gates", Map.of("g", Map.of())), null);

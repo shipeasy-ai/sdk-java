@@ -1,6 +1,6 @@
 package ai.shipeasy.openfeature;
 
-import ai.shipeasy.Client;
+import ai.shipeasy.Engine;
 
 import dev.openfeature.sdk.ErrorCode;
 import dev.openfeature.sdk.FlagEvaluationDetails;
@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Exercises {@link ShipeasyProvider} through the real OpenFeature SDK
- * ({@code OpenFeatureAPI.setProviderAndWait} + a {@code Client}), seeding flags
+ * ({@code OpenFeatureAPI.setProviderAndWait} + a {@code Engine}), seeding flags
  * and configs from an in-memory snapshot so no network I/O happens.
  */
 class ShipeasyProviderTest {
@@ -33,7 +33,7 @@ class ShipeasyProviderTest {
     }
 
     /** A gate with the given enabled/rollout, plus the configs used across tests. */
-    private static Client seededClient() {
+    private static Engine seededClient() {
         Map<String, Object> gates = Map.of(
             "new_checkout", Map.of("enabled", true, "rolloutPct", 10000, "salt", "s"),
             "off_gate", Map.of("enabled", false, "rolloutPct", 10000, "salt", "s"),
@@ -46,10 +46,10 @@ class ShipeasyProviderTest {
             // welcome_msg requested as a number -> type mismatch
             "not_a_number", Map.of("value", "abc"));
         Map<String, Object> flags = Map.of("gates", gates, "configs", configs);
-        return Client.fromSnapshot(flags, null);
+        return Engine.fromSnapshot(flags, null);
     }
 
-    private static dev.openfeature.sdk.Client setProvider(Client sdk) {
+    private static dev.openfeature.sdk.Client setProvider(Engine sdk) {
         OpenFeatureAPI api = OpenFeatureAPI.getInstance();
         api.setProviderAndWait(new ShipeasyProvider(sdk));
         return api.getClient();
@@ -57,7 +57,7 @@ class ShipeasyProviderTest {
 
     @Test
     void metadataName() {
-        assertEquals("shipeasy", new ShipeasyProvider(Client.forTesting()).getMetadata().getName());
+        assertEquals("shipeasy", new ShipeasyProvider(Engine.forTesting()).getMetadata().getName());
     }
 
     @Test
@@ -165,7 +165,7 @@ class ShipeasyProviderTest {
         Map<String, Object> gate = Map.of(
             "enabled", true, "rolloutPct", 10000, "salt", "s",
             "rules", List.of(Map.of("attr", "plan", "op", "eq", "value", "pro")));
-        Client sdk = Client.fromSnapshot(Map.of("gates", Map.of("g", gate)), null);
+        Engine sdk = Engine.fromSnapshot(Map.of("gates", Map.of("g", gate)), null);
         var of = setProvider(sdk);
         assertTrue(of.getBooleanValue("g", false,
             new MutableContext("u_1").add("plan", "pro")));

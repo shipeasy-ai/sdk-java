@@ -35,9 +35,9 @@ import java.util.logging.Logger;
  * <p>This class is also the package-level facade backing the global
  * {@link #see(Object)}, {@link #violation(String)} and
  * {@link #controlFlowException(Throwable)} functions, dispatched against the
- * last-constructed {@link Client} (registered automatically in its constructor).
- * A global call before any client exists logs a warning and returns a no-op
- * chain — it never throws.
+ * last-constructed {@link Engine} (registered automatically in its constructor,
+ * and by {@link Shipeasy#configure}). A global call before any engine exists logs
+ * a warning and returns a no-op chain — it never throws.
  */
 public final class See {
     private static final Logger log = Logger.getLogger("shipeasy");
@@ -55,42 +55,43 @@ public final class See {
     static final String DEFAULT_OUTCOME = "hit an error";
 
     private static final Object DEFAULT_LOCK = new Object();
-    private static volatile Client defaultClient;
+    private static volatile Engine defaultEngine;
 
     private See() {}
 
     /**
-     * Register the client backing the package-level {@code See.see()} functions.
-     * Called automatically when a {@link Client} is constructed (last wins).
+     * Register the engine backing the package-level {@code See.see()} functions.
+     * Called automatically when an {@link Engine} is constructed (last wins) and
+     * by {@link Shipeasy#configure}.
      */
-    public static void setDefaultClient(Client client) {
+    public static void setDefaultEngine(Engine engine) {
         synchronized (DEFAULT_LOCK) {
-            defaultClient = client;
+            defaultEngine = engine;
         }
     }
 
-    private static Client resolveDefault() {
-        return defaultClient;
+    private static Engine resolveDefault() {
+        return defaultEngine;
     }
 
     /**
      * Report a caught throwable (or thrown non-throwable problem) via the default
-     * client. Use {@link Client#see(Object)} to target a specific client.
+     * engine. Use {@link Engine#see(Object)} to target a specific engine.
      */
     public static SeeChain see(Object problem) {
-        Client c = resolveDefault();
+        Engine c = resolveDefault();
         if (c == null) {
-            log.warning("see() called before a client was created — error dropped");
+            log.warning("see() called before an engine was created — error dropped");
             return SeeChain.noop(problem);
         }
         return c.see(problem);
     }
 
-    /** Report a non-throwable problem (a {@link Violation}) via the default client. */
+    /** Report a non-throwable problem (a {@link Violation}) via the default engine. */
     public static SeeChain violation(String name) {
-        Client c = resolveDefault();
+        Engine c = resolveDefault();
         if (c == null) {
-            log.warning("seeViolation() called before a client was created — error dropped");
+            log.warning("seeViolation() called before an engine was created — error dropped");
             return SeeChain.noop(new Violation(name));
         }
         return c.seeViolation(name);

@@ -42,7 +42,7 @@ public final class AnonId {
 
     /**
      * The anon id {@link AnonIdFilter} resolved for the current request, or
-     * {@code null} when no filter ran. {@link Client#getFlag}/{@code getExperiment}
+     * {@code null} when no filter ran. {@link Engine#getFlag}/{@code getExperiment}
      * fall back to this as the default {@code anonymous_id}.
      */
     public static String current() {

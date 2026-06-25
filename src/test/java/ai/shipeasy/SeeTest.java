@@ -73,7 +73,7 @@ class SeeTest {
 
     @Test
     void caughtThrowableReportsErrorEvent() throws Exception {
-        try (Client c = new Client("srv_key", baseUrl(), "prod", false)) {
+        try (Engine c = new Engine("srv_key", baseUrl(), "prod", false)) {
             try {
                 throw new IllegalArgumentException("boom");
             } catch (IllegalArgumentException e) {
@@ -87,7 +87,7 @@ class SeeTest {
             assertEquals("checkout", ev.get("subject"));
             assertEquals("use cached prices", ev.get("outcome"));
             assertEquals("server", ev.get("side"));
-            assertEquals(Client.VERSION, ev.get("sdk_version"));
+            assertEquals(Engine.VERSION, ev.get("sdk_version"));
             assertEquals("prod", ev.get("env"));
             assertTrue(ev.containsKey("stack"));
             assertNotNull(ev.get("ts"));
@@ -96,7 +96,7 @@ class SeeTest {
 
     @Test
     void violationUsesViolationKindAndNoStack() throws Exception {
-        try (Client c = new Client("srv_key", baseUrl())) {
+        try (Engine c = new Engine("srv_key", baseUrl())) {
             c.seeViolation("large query").causesThe("search results").to("be trimmed");
             Map<String, Object> ev = awaitEvent();
             assertEquals("violation", ev.get("kind"));
@@ -110,7 +110,7 @@ class SeeTest {
     @Test
     @SuppressWarnings("unchecked")
     void extrasAreSanitizedAndSent() throws Exception {
-        try (Client c = new Client("srv_key", baseUrl())) {
+        try (Engine c = new Engine("srv_key", baseUrl())) {
             Map<String, Object> extras = new HashMap<>();
             extras.put("photo_id", "p1");
             extras.put("size", 42);
@@ -144,7 +144,7 @@ class SeeTest {
 
     @Test
     void controlFlowMarksAndReportsNothing() throws Exception {
-        try (Client c = new Client("srv_key", baseUrl())) {
+        try (Engine c = new Engine("srv_key", baseUrl())) {
             RuntimeException e = new RuntimeException("not a Foo");
             c.controlFlowException(e).because("because it wasn't an encoded Foo")
                 .extras(Map.of("tried", "Foo"));
@@ -155,7 +155,7 @@ class SeeTest {
 
     @Test
     void toIsRequiredNoSendWithoutTerminal() throws Exception {
-        try (Client c = new Client("srv_key", baseUrl())) {
+        try (Engine c = new Engine("srv_key", baseUrl())) {
             c.see(new RuntimeException("x")).causesThe("checkout"); // no .to()
             assertNoSend();
         }
@@ -163,7 +163,7 @@ class SeeTest {
 
     @Test
     void toIsIdempotent() throws Exception {
-        try (Client c = new Client("srv_key", baseUrl())) {
+        try (Engine c = new Engine("srv_key", baseUrl())) {
             SeeChain chain = c.see(new RuntimeException("x")).causesThe("checkout");
             chain.to("a");
             chain.to("b"); // no-op: the second outcome must never reach the wire
@@ -176,7 +176,7 @@ class SeeTest {
 
     @Test
     void defaultsWhenConsequenceOmitted() throws Exception {
-        try (Client c = new Client("srv_key", baseUrl())) {
+        try (Engine c = new Engine("srv_key", baseUrl())) {
             c.see(new RuntimeException("x")).to("be incomplete");
             Map<String, Object> ev = awaitEvent();
             assertEquals("app", ev.get("subject"));
@@ -186,7 +186,7 @@ class SeeTest {
 
     @Test
     void localModeIsNoop() throws Exception {
-        try (Client c = Client.forTesting()) {
+        try (Engine c = Engine.forTesting()) {
             c.see(new RuntimeException("x")).causesThe("checkout").to("use cached prices");
             assertNoSend();
         }
@@ -194,7 +194,7 @@ class SeeTest {
 
     @Test
     void staticFacadeUsesLastConstructedClient() throws Exception {
-        try (Client c = new Client("srv_key", baseUrl())) {
+        try (Engine c = new Engine("srv_key", baseUrl())) {
             See.see(new RuntimeException("global")).causesThe("dashboard").to("show cached data");
             Map<String, Object> ev = awaitEvent();
             assertEquals("dashboard", ev.get("subject"));
@@ -203,7 +203,7 @@ class SeeTest {
 
     @Test
     void staticFacadeBeforeClientWarnsAndDrops() throws Exception {
-        See.setDefaultClient(null);
+        See.setDefaultEngine(null);
         // Must not throw, must not send.
         See.see(new RuntimeException("x")).causesThe("checkout").to("use cached prices");
         See.violation("v").to("nothing");
@@ -213,7 +213,7 @@ class SeeTest {
     @Test
     @SuppressWarnings("unchecked")
     void privateAttributesStrippedFromExtras() throws Exception {
-        try (Client c = new Client("srv_key", baseUrl()).privateAttributes(List.of("secret"))) {
+        try (Engine c = new Engine("srv_key", baseUrl()).privateAttributes(List.of("secret"))) {
             Map<String, Object> extras = new HashMap<>();
             extras.put("secret", "shh");
             extras.put("ok", "yes");

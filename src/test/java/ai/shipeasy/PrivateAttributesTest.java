@@ -68,7 +68,7 @@ class PrivateAttributesTest {
 
     @Test
     void privateAttributesAreStrippedFromTrack() throws Exception {
-        try (Client c = new Client("k", baseUrl()).privateAttributes(List.of("email", "ssn"))) {
+        try (Engine c = new Engine("k", baseUrl()).privateAttributes(List.of("email", "ssn"))) {
             c.track("u_1", "purchase", Map.of(
                 "amount", 49,
                 "email", "a@b.com",
@@ -86,7 +86,7 @@ class PrivateAttributesTest {
 
     @Test
     void nonPrivateAttributesPassThroughUnchanged() throws Exception {
-        try (Client c = new Client("k", baseUrl())) {
+        try (Engine c = new Engine("k", baseUrl())) {
             c.track("u_1", "purchase", Map.of("amount", 49, "currency", "USD"));
             Map<String, Object> event = awaitBody();
             @SuppressWarnings("unchecked")

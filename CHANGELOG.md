@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.8.0
+
+- **BREAKING — `Client` is now the lightweight, user-bound handle; the
+  heavyweight client is renamed to `Engine`.** The class that owns the API key,
+  HTTP, the blob cache, the poll timer, overrides, `track`, `see()` and the
+  `forTesting`/`fromFile`/`fromSnapshot` factories is now `ai.shipeasy.Engine`
+  (was `ai.shipeasy.Client`). Its public surface is otherwise unchanged — only
+  the name. The `see()` default-engine wiring (last-constructed wins) now hooks
+  off `Engine` construction via `See.setDefaultEngine(Engine)` (was
+  `setDefaultClient`). Migration: replace `new Client(...)`/`Client.forTesting()`
+  /`Client.fromSnapshot(...)` with the `Engine` equivalents, and
+  `See.setDefaultClient` with `See.setDefaultEngine`.
+
+- **New global `Shipeasy.configure(...)` + user-bound `new Client(user)`.** The
+  primary flow is now two calls:
+
+  ```java
+  Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));   // once, at startup
+  boolean on = new Client(user).getFlag("new_checkout");      // per user/request
+  ```
+
+  - `Shipeasy.configure(String apiKey)` / `Shipeasy.configure(Shipeasy.Options)`
+    builds **one** global `Engine` (first-config-wins idempotent), registers it
+    as the `see()` default, and kicks off the one-shot fetch fire-and-forget.
+    `Shipeasy.options(apiKey)` is a small builder (`.baseUrl`, `.env`,
+    `.disableTelemetry`, `.attributes`).
+  - `Shipeasy.Options.attributes(Function<Object, Map<String,Object>>)` is an
+    optional transform from your own user object (any shape) to the Shipeasy
+    attribute map. Default = identity (the user object IS the attribute map). The
+    transform runs once, in the `Client` constructor.
+  - The new lightweight `ai.shipeasy.Client` (`public Client(Object user)`)
+    reads the global engine (throws `IllegalStateException` if `configure` was
+    not called), applies the attributes transform once, binds the resulting
+    attribute map, and exposes **user-argument-free** `getFlag(name)` /
+    `getFlag(name, default)` / `getFlagDetail(name)` / `getConfig(name[,
+    default])` / `getExperiment(name, defaultParams)` / `getKillswitch(name[,
+    switchKey])`. It owns no HTTP/cache/timer — it forwards to the global engine
+    with the bound attrs. Request-scoped `anonymous_id` (from `AnonIdFilter`/
+    `AnonId`) is still merged by the engine at evaluation time.
+
+- **New `Engine.getKillswitch(name[, switchKey])`** reading the `killswitches`
+  blob (`{killed, switches}`) — whole-killswitch killed state, or a named
+  per-key switch. `Engine.evaluate(user)` now emits the real `killswitches` map
+  (boolean, or per-switch map) instead of an empty map, matching the browser
+  bootstrap shape. The `VERSION` constant is corrected to track the published
+  version.
+
 ## 0.7.0
 
 - **SSR bootstrap script-tag helpers.** New `Client.evaluate(user)`

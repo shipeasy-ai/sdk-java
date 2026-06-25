@@ -80,7 +80,7 @@ class LogExposureTest {
 
     @Test
     void enrolledUserPostsOneExposure() throws Exception {
-        try (Client c = new Client("k", baseUrl())) {
+        try (Engine c = new Engine("k", baseUrl())) {
             c.applyDataForTest(Map.of("gates", Map.of()), runningExps());
             c.logExposure("user_beta", "pricing_test");
             Map<String, Object> event = awaitEvent();
@@ -94,7 +94,7 @@ class LogExposureTest {
 
     @Test
     void unenrolledUserPostsNothing() throws Exception {
-        try (Client c = new Client("k", baseUrl())) {
+        try (Engine c = new Engine("k", baseUrl())) {
             // Experiment not running -> not enrolled -> no exposure.
             Map<String, Object> exp = Map.of(
                 "universe", "universe_pricing",
@@ -113,7 +113,7 @@ class LogExposureTest {
 
     @Test
     void mapOverloadResolvesTargeting() throws Exception {
-        try (Client c = new Client("k", baseUrl())) {
+        try (Engine c = new Engine("k", baseUrl())) {
             c.applyDataForTest(Map.of("gates", Map.of()), runningExps());
             c.logExposure(Map.of("user_id", "user_beta"), "pricing_test");
             Map<String, Object> event = awaitEvent();
@@ -125,7 +125,7 @@ class LogExposureTest {
     // logExposure on a test-mode client is a no-op (never touches the network).
     @Test
     void logExposureNoOpInTestMode() {
-        try (Client c = Client.forTesting()) {
+        try (Engine c = Engine.forTesting()) {
             c.overrideExperiment("pricing_test", "treatment", Map.of());
             c.logExposure("user_beta", "pricing_test"); // must not throw / not POST
         }

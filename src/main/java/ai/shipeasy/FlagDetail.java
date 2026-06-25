@@ -2,7 +2,7 @@ package ai.shipeasy;
 
 /**
  * The resolved value of a flag together with the {@code reason} it resolved
- * that way. Returned by {@link Client#getFlagDetail(String, java.util.Map)}.
+ * that way. Returned by {@link Engine#getFlagDetail(String, java.util.Map)}.
  * The reason is computed at the SDK boundary (the canonical {@link Eval#evalGate}
  * is untouched) and is one of the {@code Reason} constants below.
  */

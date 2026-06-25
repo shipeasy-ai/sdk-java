@@ -14,7 +14,7 @@ class TestUtilitiesTest {
     // forTesting() needs no network and no API key, and is usable without init().
     @Test
     void forTestingNeedsNoNetworkOrKey() {
-        try (Client c = Client.forTesting()) {
+        try (Engine c = Engine.forTesting()) {
             // No init()/key required: an unseeded flag is simply false (no fetch).
             assertFalse(c.getFlag("anything", Map.of()));
             assertNull(c.getConfig("anything"));
@@ -25,7 +25,7 @@ class TestUtilitiesTest {
     @Test
     void initIsNoOpInTestMode() {
         assertDoesNotThrow(() -> {
-            try (Client c = Client.forTesting()) {
+            try (Engine c = Engine.forTesting()) {
                 c.init();
                 c.initOnce();
             }
@@ -35,7 +35,7 @@ class TestUtilitiesTest {
     // Each override is returned by the matching getter.
     @Test
     void overridesWin() {
-        try (Client c = Client.forTesting()) {
+        try (Engine c = Engine.forTesting()) {
             c.overrideFlag("new_checkout", true);
             assertTrue(c.getFlag("new_checkout", Map.of()));
 
@@ -53,7 +53,7 @@ class TestUtilitiesTest {
     // clearOverrides() resets every override back to the no-override behavior.
     @Test
     void clearOverridesResets() {
-        try (Client c = Client.forTesting()) {
+        try (Engine c = Engine.forTesting()) {
             c.overrideFlag("new_checkout", true);
             c.overrideConfig("billing_copy", "x");
             c.overrideExperiment("checkout_button", "treatment", Map.of("color", "green"));
@@ -72,7 +72,7 @@ class TestUtilitiesTest {
     @Test
     void trackIsNoOp() {
         assertDoesNotThrow(() -> {
-            try (Client c = Client.forTesting()) {
+            try (Engine c = Engine.forTesting()) {
                 c.track("u_123", "purchase", Map.of("amount", 49));
             }
         });
@@ -81,7 +81,7 @@ class TestUtilitiesTest {
     // Overrides also work on a normal (non-test) client.
     @Test
     void overridesWorkOnNormalClient() {
-        try (Client c = new Client("dummy-key", "https://edge.invalid")) {
+        try (Engine c = new Engine("dummy-key", "https://edge.invalid")) {
             c.overrideFlag("new_checkout", true);
             assertTrue(c.getFlag("new_checkout", Map.of()));
         }

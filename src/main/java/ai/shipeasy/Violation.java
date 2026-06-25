@@ -2,7 +2,7 @@ package ai.shipeasy;
 
 /**
  * A non-throwable problem reported via {@link See#violation(String)} /
- * {@link Client#seeViolation(String)}. The {@code name} is a stable fingerprint
+ * {@link Engine#seeViolation(String)}. The {@code name} is a stable fingerprint
  * key — put variable data in {@code .extras()}, never in the name.
  */
 public final class Violation {

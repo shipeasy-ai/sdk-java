@@ -4,8 +4,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Fluent builder returned by {@link Client#see(Object)} /
- * {@link Client#seeViolation(String)}. Accumulates the consequence
+ * Fluent builder returned by {@link Engine#see(Object)} /
+ * {@link Engine#seeViolation(String)}. Accumulates the consequence
  * ({@code causesThe}) and {@code extras}; the terminal {@code to(outcome)}
  * builds the wire event and fire-and-forgets the send.
  *

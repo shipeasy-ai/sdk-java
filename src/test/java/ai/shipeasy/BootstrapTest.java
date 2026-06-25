@@ -14,13 +14,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BootstrapTest {
 
     @SuppressWarnings("unchecked")
-    private static Client client() {
+    private static Engine client() {
         Map<String, Object> flags = Map.of(
             "gates", Map.of(
                 "new_ui", Map.of("enabled", true, "rolloutPct", 10000, "salt", "s"),
                 "off_gate", Map.of("enabled", false, "rolloutPct", 10000, "salt", "s")),
             "configs", Map.of("theme", Map.of("value", Map.of("color", "blue"))));
-        return Client.fromSnapshot(flags, Map.of("experiments", Map.of(), "universes", Map.of()));
+        return Engine.fromSnapshot(flags, Map.of("experiments", Map.of(), "universes", Map.of()));
     }
 
     @Test

@@ -24,7 +24,7 @@ class OfflineSnapshotTest {
             "configs", Map.of("billing_copy",
                 Map.of("value", Map.of("title", "Hi"))));
 
-        try (Client c = Client.fromSnapshot(flags, null)) {
+        try (Engine c = Engine.fromSnapshot(flags, null)) {
             // No init() needed; points at an invalid host but never calls it.
             assertTrue(c.getFlag("new_checkout", Map.of("user_id", "u_1")));
             assertEquals(Map.of("title", "Hi"), c.getConfig("billing_copy"));
@@ -39,7 +39,7 @@ class OfflineSnapshotTest {
     void overridesApplyOnTopOfSnapshot() {
         Map<String, Object> flags = Map.of(
             "gates", Map.of("g", Map.of("enabled", true, "rolloutPct", 0)));
-        try (Client c = Client.fromSnapshot(flags, null)) {
+        try (Engine c = Engine.fromSnapshot(flags, null)) {
             assertFalse(c.getFlag("g", Map.of("user_id", "u_1")));
             c.overrideFlag("g", true);
             assertTrue(c.getFlag("g", Map.of("user_id", "u_1")));
@@ -56,7 +56,7 @@ class OfflineSnapshotTest {
         Path tmp = Files.createTempFile("se-snapshot", ".json");
         try {
             Files.writeString(tmp, json);
-            try (Client c = Client.fromFile(tmp.toString())) {
+            try (Engine c = Engine.fromFile(tmp.toString())) {
                 assertTrue(c.getFlag("g", Map.of("user_id", "u_1")));
                 assertNull(c.getConfig("absent"));
             }

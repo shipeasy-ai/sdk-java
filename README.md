@@ -10,22 +10,66 @@ Server SDK for [Shipeasy](https://shipeasy.dev).
 </dependency>
 ```
 
+Configure once at startup, then build a user-bound `Client` per request — every
+evaluation call takes **no user argument** because the user is bound:
+
 ```java
+import ai.shipeasy.Shipeasy;
 import ai.shipeasy.Client;
 import ai.shipeasy.ExperimentResult;
 import java.util.Map;
 
-try (Client c = new Client(System.getenv("SHIPEASY_SERVER_KEY"))) {
-    c.init();
+// Once, at startup (e.g. main() or an @PostConstruct bean). Builds the single
+// global engine and kicks off the initial fetch fire-and-forget.
+Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
 
-    boolean enabled = c.getFlag("new_checkout", Map.of("user_id", "u_123"));
-    Object cfg = c.getConfig("billing_copy");
-    ExperimentResult r = c.getExperiment("checkout_button",
-        Map.of("user_id", "u_123"),
-        Map.of("color", "blue"));
-    c.track("u_123", "purchase", Map.of("amount", 49));
+// Per user / per request. The user is bound at construction.
+Client c = new Client(Map.of("user_id", "u_123", "plan", "pro"));
+
+boolean enabled = c.getFlag("new_checkout");
+Object cfg      = c.getConfig("billing_copy");
+ExperimentResult r = c.getExperiment("checkout_button", Map.of("color", "blue"));
+boolean killed  = c.getKillswitch("panic_button");
+```
+
+### Mapping your own user object
+
+Pass an `attributes` transform once at `configure` time; `new Client(yourUser)`
+runs it once and binds the resulting attribute map:
+
+```java
+Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+    .attributes((Object u) -> {
+        MyUser my = (MyUser) u;
+        return Map.of("user_id", my.id(), "plan", my.plan());
+    }));
+
+boolean on = new Client(myUser).getFlag("new_checkout");
+```
+
+The default transform is identity — if you pass a `Map<String, Object>` it is
+used as the attribute map verbatim.
+
+### Engine (advanced)
+
+`Shipeasy.configure(...)` returns the underlying `Engine` — the heavyweight
+handle that owns the API key, HTTP, the blob cache, the poll timer, `track()`,
+`see()` and the offline/test factories. Long-running servers can call
+`init()` on it to also start the background poll, or use it directly:
+
+```java
+import ai.shipeasy.Engine;
+
+try (Engine engine = new Engine(System.getenv("SHIPEASY_SERVER_KEY"))) {
+    engine.init();
+    boolean enabled = engine.getFlag("new_checkout", Map.of("user_id", "u_123"));
+    engine.track("u_123", "purchase", Map.of("amount", 49));
 }
 ```
+
+> **Breaking change (0.8.0):** the heavyweight client was renamed `Client` →
+> `Engine`, and `Client` is now the lightweight user-bound handle above. Replace
+> `new Client(key)` with `new Engine(key)` (or, preferably, `Shipeasy.configure(key)`).
 
 ## Anonymous visitors (zero-config bucketing)
 
@@ -47,7 +91,7 @@ FilterRegistrationBean<AnonIdFilter> shipeasyAnonId() {
 
 ```java
 // logged-out request → buckets on the __se_anon_id cookie automatically
-c.getFlag("new_checkout", Map.of());
+new Client(Map.of()).getFlag("new_checkout");
 ```
 
 `jakarta.servlet-api` is a `provided` dependency — your container already
@@ -67,16 +111,20 @@ browser SDK has them on first paint. `bootstrapScriptTag` carries the payload in
 buckets identically to the server.
 
 ```java
+Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
 Map<String, Object> user = Map.of("user_id", "u_123");
 
 // Two tags for the document <head>. The PUBLIC client key (not the server
 // key) goes on the i18n loader tag.
-String head = c.bootstrapScriptTag(user, anonId)
-            + c.i18nScriptTag(clientKey, "en:prod");
+String head = engine.bootstrapScriptTag(user, anonId)
+            + engine.i18nScriptTag(clientKey, "en:prod");
 
 // …or get the raw payload ({flags, configs, experiments, killswitches}):
-Map<String, Object> boot = c.evaluate(user);
+Map<String, Object> boot = engine.evaluate(user);
 ```
+
+The SSR/bootstrap helpers live on the `Engine` (the per-request payload is a
+whole-blob batch evaluate, not a single bound user's lookup).
 
 Overloads let you omit the anon id, or pass `i18nProfile` / `baseUrl`
 (defaults to `https://cdn.shipeasy.ai`).
@@ -88,13 +136,18 @@ Overloads let you omit the anon id, or pass `i18nProfile` / `baseUrl`
 or the key is absent — never when a flag legitimately evaluates to `false`:
 
 ```java
-// returns `true` only if the flag is missing or the client isn't ready;
+Client c = new Client(Map.of("user_id", "u_123"));
+
+// returns `true` only if the flag is missing or the engine isn't ready;
 // a flag that evaluates to false returns false (not the default).
-boolean enabled = c.getFlag("new_checkout", Map.of("user_id", "u_123"), true);
+boolean enabled = c.getFlag("new_checkout", true);
 
 // returns the fallback when the config key is absent.
 Object copy = c.getConfig("billing_copy", Map.of("title", "Default"));
 ```
+
+(The same default-value overloads exist on the `Engine` with an explicit user
+argument: `engine.getFlag(name, user, default)`.)
 
 ## Evaluation detail
 
@@ -102,7 +155,7 @@ Object copy = c.getConfig("billing_copy", Map.of("title", "Default"));
 resolved that way, for logging and debugging:
 
 ```java
-FlagDetail d = c.getFlagDetail("new_checkout", Map.of("user_id", "u_123"));
+FlagDetail d = new Client(Map.of("user_id", "u_123")).getFlagDetail("new_checkout");
 d.value();   // boolean
 d.reason();  // one of the FlagDetail.* reason constants
 ```
@@ -118,7 +171,7 @@ The reason is one of:
 | `RULE_MATCH`       | The flag evaluated to `true` via its rules/rollout.    |
 | `DEFAULT`          | The flag is on but evaluated to `false` for this user. |
 
-`getFlag(name, user)` is just `getFlagDetail(name, user).value()`.
+`getFlag(name)` is just `getFlagDetail(name).value()`.
 
 ## Change listeners
 
@@ -126,7 +179,8 @@ Register a listener that fires after a background poll applies **new** data
 (an HTTP 200, not a 304). `onChange` returns a cancel `Runnable`:
 
 ```java
-Runnable cancel = c.onChange(() -> log.info("flags updated"));
+Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
+Runnable cancel = engine.onChange(() -> log.info("flags updated"));
 // ... later
 cancel.run(); // unsubscribe
 ```
@@ -142,33 +196,33 @@ Run fully offline against a captured snapshot — no network, real evaluation.
 `fromSnapshot` takes the same two blobs in memory:
 
 ```java
-try (Client c = Client.fromFile("snapshot.json")) {
-    boolean on = c.getFlag("new_checkout", Map.of("user_id", "u_123"));
+try (Engine engine = Engine.fromFile("snapshot.json")) {
+    boolean on = engine.getFlag("new_checkout", Map.of("user_id", "u_123"));
 }
 
-try (Client c = Client.fromSnapshot(flagsBlob, experimentsBlob)) {
-    Object cfg = c.getConfig("billing_copy", "fallback");
+try (Engine engine = Engine.fromSnapshot(flagsBlob, experimentsBlob)) {
+    Object cfg = engine.getConfig("billing_copy", "fallback");
 }
 ```
 
-Snapshot clients are no-network like `forTesting()` — `init()`/`initOnce()`/
+Snapshot engines are no-network like `forTesting()` — `init()`/`initOnce()`/
 `track()` are no-ops, telemetry is off, and `override*` values apply on top of
 the snapshot.
 
 ## Testing
 
-`Client.forTesting()` returns a no-network client for unit tests: telemetry is
+`Engine.forTesting()` returns a no-network engine for unit tests: telemetry is
 disabled, `init()`/`initOnce()` and `track()` are no-ops (they never reach the
 network), and **no API key is required**. Seed each entity with the `override*`
 setters; an override always wins over any fetched value, and `clearOverrides()`
-resets them. The setters are also callable on a normal `Client`.
+resets them. The setters are also callable on a normal `Engine`.
 
 ```java
-import ai.shipeasy.Client;
+import ai.shipeasy.Engine;
 import ai.shipeasy.ExperimentResult;
 import java.util.Map;
 
-try (Client c = Client.forTesting()) {
+try (Engine c = Engine.forTesting()) {
     // Flags
     c.overrideFlag("new_checkout", true);
     boolean enabled = c.getFlag("new_checkout", Map.of()); // true

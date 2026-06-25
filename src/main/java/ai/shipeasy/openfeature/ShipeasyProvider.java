@@ -1,6 +1,6 @@
 package ai.shipeasy.openfeature;
 
-import ai.shipeasy.Client;
+import ai.shipeasy.Engine;
 import ai.shipeasy.FlagDetail;
 
 import dev.openfeature.sdk.EvaluationContext;
@@ -22,20 +22,20 @@ import java.util.Map;
  *
  * <pre>{@code
  * import dev.openfeature.sdk.OpenFeatureAPI;
- * import ai.shipeasy.Client;
+ * import ai.shipeasy.Engine;
  * import ai.shipeasy.openfeature.ShipeasyProvider;
  *
- * Client client = new Client(System.getenv("SHIPEASY_SERVER_KEY"));
- * OpenFeatureAPI.getInstance().setProviderAndWait(new ShipeasyProvider(client));
+ * Engine engine = new Engine(System.getenv("SHIPEASY_SERVER_KEY"));
+ * OpenFeatureAPI.getInstance().setProviderAndWait(new ShipeasyProvider(engine));
  *
  * var of = OpenFeatureAPI.getInstance().getClient();
  * boolean on = of.getBooleanValue("new_checkout", false,
  *     new MutableContext("u1"));
  * }</pre>
  *
- * <p>Pure adapter over {@link Client} — no change to evaluation. Booleans route
- * to gate evaluation ({@link Client#getFlagDetail}); strings, numbers and
- * objects route to dynamic configs ({@link Client#getConfig}).
+ * <p>Pure adapter over {@link Engine} — no change to evaluation. Booleans route
+ * to gate evaluation ({@link Engine#getFlagDetail}); strings, numbers and
+ * objects route to dynamic configs ({@link Engine#getConfig}).
  *
  * <p>{@code dev.openfeature:sdk} is a {@code provided}-scope dependency: the
  * consuming app supplies it. Non-OpenFeature users never load this class.
@@ -44,10 +44,10 @@ public final class ShipeasyProvider implements FeatureProvider {
 
     private static final Metadata METADATA = () -> "shipeasy";
 
-    private final Client client;
+    private final Engine engine;
 
-    public ShipeasyProvider(Client client) {
-        this.client = client;
+    public ShipeasyProvider(Engine engine) {
+        this.engine = engine;
     }
 
     @Override
@@ -58,18 +58,18 @@ public final class ShipeasyProvider implements FeatureProvider {
     /** Ensure the rules blob is loaded once. OpenFeature fires {@code Ready} on return. */
     @Override
     public void initialize(EvaluationContext context) throws Exception {
-        client.initOnce();
+        engine.initOnce();
     }
 
     @Override
     public void shutdown() {
-        client.close();
+        engine.close();
     }
 
     @Override
     public ProviderEvaluation<Boolean> getBooleanEvaluation(
             String key, Boolean defaultValue, EvaluationContext ctx) {
-        FlagDetail detail = client.getFlagDetail(key, toUser(ctx));
+        FlagDetail detail = engine.getFlagDetail(key, toUser(ctx));
         Mapped m = mapReason(detail.reason());
         if (m.errorCode != null) {
             return ProviderEvaluation.<Boolean>builder()
@@ -120,7 +120,7 @@ public final class ShipeasyProvider implements FeatureProvider {
      */
     @SuppressWarnings("unchecked")
     private <T> ProviderEvaluation<T> resolveConfig(String key, T defaultValue, ConfigType type) {
-        Object raw = client.getConfig(key);
+        Object raw = engine.getConfig(key);
         if (raw == null) {
             return ProviderEvaluation.<T>builder()
                     .value(defaultValue)

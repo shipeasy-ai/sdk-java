@@ -96,12 +96,12 @@ class StickyBucketingTest {
         assertEquals(r.group, store.get("user_beta").get("pricing_test").group);
     }
 
-    // Integration through Client.getExperiment with a supplied store: a unit
+    // Integration through Engine.getExperiment with a supplied store: a unit
     // bucketed at full allocation stays enrolled after the allocation shrinks.
     @Test
     void clientStickyStoreLocksAssignment() {
         InMemoryStickyStore store = new InMemoryStickyStore();
-        try (Client c = Client.forTesting().stickyStore(store)) {
+        try (Engine c = Engine.forTesting().stickyStore(store)) {
             Map<String, Object> exps = Map.of("experiments",
                 Map.of("pricing_test", exp(10000, "exp_pricing_42")));
             c.applyDataForTest(Map.of("gates", Map.of()), exps);
