@@ -31,6 +31,9 @@ boolean enabled     = c.getFlag("new_checkout");
 Object cfg          = c.getConfig("billing_copy");
 ExperimentResult r  = c.getExperiment("checkout_button", Map.of("color", "blue"));
 boolean killed      = c.getKillswitch("panic_button");
+
+c.logExposure("checkout_button");        // emit the exposure when you present it
+c.track("purchase", Map.of("amount", 49)); // record the conversion
 ```
 
 ## Engine vs Client
@@ -40,7 +43,8 @@ boolean killed      = c.getKillswitch("panic_button");
 | Weight | Heavyweight — owns the API key, HTTP, blob cache, poll timer | Lightweight — forwards to the global `Engine` |
 | Lifetime | One per process (built by `configure`) | One per user / request |
 | User argument | Explicit `user` map per call (`getFlag(name, user)`) | Bound at construction (`getFlag(name)`) |
-| Owns | `track()`, `see()`, `logExposure()`, SSR helpers, the offline/test factories | nothing — pure delegation |
+| Experiments | `track(userId, …)`, `logExposure(userId, …)` (explicit unit) | `track(event[, props])`, `logExposure(name)` (unit from bound attrs) |
+| Owns | the API key, HTTP, blob cache, poll timer; `see()`, SSR helpers, offline/test factories | delegates everything (incl. `track`/`logExposure`) to the `Engine` |
 
 `Shipeasy.configure(...)` **returns** the `Engine`, so you can reach the
 heavyweight surface (background poll via `init()`, `track()`, SSR bootstrap,
@@ -53,7 +57,7 @@ heavyweight surface (background poll via `init()`, `track()`, SSR bootstrap,
 - [Flags](flags.md) — `getFlag`, defaults, `getFlagDetail`.
 - [Configs](configs.md) — `getConfig`, typed values, defaults.
 - [Kill switches](killswitches.md) — `getKillswitch` and named switches.
-- [Experiments](experiments.md) — `getExperiment`, `ExperimentResult`, `track`.
+- [Experiments](experiments.md) — `getExperiment`, `ExperimentResult`, `Client.track`/`logExposure`.
 - [i18n](i18n.md) — SSR bootstrap for the browser SDK (server SDK has no `t()`).
 - [Error reporting](error-reporting.md) — `see()` structured error reporting.
 - [Testing](testing.md) — `Engine.forTesting()`, `fromFile`/`fromSnapshot`, `override*`.

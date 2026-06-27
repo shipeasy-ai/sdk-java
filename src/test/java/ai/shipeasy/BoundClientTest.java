@@ -1,12 +1,21 @@
 package ai.shipeasy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.net.InetSocketAddress;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -103,6 +112,117 @@ class BoundClientTest {
         assertTrue(c.getKillswitch("feature", "beta"));
         assertFalse(c.getKillswitch("feature", "ga"));
         assertFalse(c.getKillswitch("unknown"));
+    }
+
+    // The bound Client.track derives the unit id from the bound attributes
+    // (user_id, else anonymous_id) and reaches the engine's /collect POST with it.
+    @Test
+    void boundTrackDerivesUnitFromAttributes() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        AtomicReference<String> body = new AtomicReference<>();
+        CountDownLatch received = new CountDownLatch(1);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/collect", (HttpExchange ex) -> {
+            body.set(new String(ex.getRequestBody().readAllBytes()));
+            ex.sendResponseHeaders(200, -1);
+            ex.close();
+            received.countDown();
+        });
+        server.start();
+        try (Engine engine = new Engine("k", "http://127.0.0.1:" + server.getAddress().getPort())) {
+            engine.applyDataForTest(Map.of("gates", Map.of()), null);
+            Shipeasy.useEngineForTest(engine, Shipeasy.IDENTITY);
+
+            new Client(Map.of("user_id", "u_42")).track("checkout", Map.of("amount", 9));
+
+            assertTrue(received.await(5, TimeUnit.SECONDS), "no /collect POST received");
+            Map<String, Object> root = mapper.readValue(body.get(), Map.class);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> events = (List<Map<String, Object>>) root.get("events");
+            assertEquals(1, events.size());
+            Map<String, Object> event = events.get(0);
+            assertEquals("metric", event.get("type"));
+            assertEquals("checkout", event.get("event_name"));
+            assertEquals("u_42", event.get("user_id"));
+            assertNotNull(event.get("properties"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    // No props overload and anonymous_id fallback when no user_id is bound.
+    @Test
+    void boundTrackFallsBackToAnonymousId() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        AtomicReference<String> body = new AtomicReference<>();
+        CountDownLatch received = new CountDownLatch(1);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/collect", (HttpExchange ex) -> {
+            body.set(new String(ex.getRequestBody().readAllBytes()));
+            ex.sendResponseHeaders(200, -1);
+            ex.close();
+            received.countDown();
+        });
+        server.start();
+        try (Engine engine = new Engine("k", "http://127.0.0.1:" + server.getAddress().getPort())) {
+            engine.applyDataForTest(Map.of("gates", Map.of()), null);
+            Shipeasy.useEngineForTest(engine, Shipeasy.IDENTITY);
+
+            new Client(Map.of("anonymous_id", "anon_7")).track("view");
+
+            assertTrue(received.await(5, TimeUnit.SECONDS), "no /collect POST received");
+            Map<String, Object> root = mapper.readValue(body.get(), Map.class);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> events = (List<Map<String, Object>>) root.get("events");
+            Map<String, Object> event = events.get(0);
+            assertEquals("view", event.get("event_name"));
+            assertEquals("anon_7", event.get("user_id"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    // The bound Client.logExposure re-evaluates with the bound attributes and
+    // POSTs one exposure for an enrolled user.
+    @Test
+    void boundLogExposurePostsForEnrolledUser() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        AtomicReference<String> body = new AtomicReference<>();
+        CountDownLatch received = new CountDownLatch(1);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/collect", (HttpExchange ex) -> {
+            body.set(new String(ex.getRequestBody().readAllBytes()));
+            ex.sendResponseHeaders(200, -1);
+            ex.close();
+            received.countDown();
+        });
+        server.start();
+        Map<String, Object> exp = Map.of(
+            "universe", "universe_pricing",
+            "allocationPct", 10000,
+            "salt", "exp_pricing_42",
+            "status", "running",
+            "groups", List.of(
+                Map.of("name", "control", "weight", 9086, "params", Map.of("variant", "a")),
+                Map.of("name", "treatment", "weight", 914, "params", Map.of("variant", "b"))));
+        try (Engine engine = new Engine("k", "http://127.0.0.1:" + server.getAddress().getPort())) {
+            engine.applyDataForTest(Map.of("gates", Map.of()),
+                Map.of("experiments", Map.of("pricing_test", exp), "universes", Map.of()));
+            Shipeasy.useEngineForTest(engine, Shipeasy.IDENTITY);
+
+            new Client(Map.of("user_id", "user_beta")).logExposure("pricing_test");
+
+            assertTrue(received.await(5, TimeUnit.SECONDS), "no /collect POST received");
+            Map<String, Object> root = mapper.readValue(body.get(), Map.class);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> events = (List<Map<String, Object>>) root.get("events");
+            Map<String, Object> event = events.get(0);
+            assertEquals("exposure", event.get("type"));
+            assertEquals("pricing_test", event.get("experiment"));
+            assertEquals("user_beta", event.get("user_id"));
+        } finally {
+            server.stop(0);
+        }
     }
 
     // configure(apiKey) is first-config-wins idempotent and registers the engine

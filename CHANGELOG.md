@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0
+
+- Add `track()`/`logExposure()` to the bound `Client` (experiments are now
+  end-to-end Client-only; the `Engine` forms remain for advanced use). The
+  bound `Client` already holds the resolved attribute map, so
+  `client.track(event[, props])` derives the unit id from it (`user_id`, else
+  `anonymous_id`) and `client.logExposure(experiment)` re-evaluates with the
+  bound attributes — no user argument needed.
+
 ## 0.8.0
 
 - **BREAKING — `Client` is now the lightweight, user-bound handle; the

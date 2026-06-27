@@ -48,13 +48,19 @@ ExperimentResult r = engine.getExperiment(
 
 ## Tracking conversions with `track(...)`
 
-Conversion events are recorded with `track`, which lives on the **`Engine`**
-(it owns the HTTP path). Fire your success event — `{{SUCCESS_EVENT}}` —
-after the user converts:
+Conversion events are recorded with `track`, **right on the bound `Client`** —
+the same handle you already have for `getExperiment`. The unit id is derived
+from the bound attributes (`user_id`, else `anonymous_id`), so there is no user
+argument. Fire your success event — `{{SUCCESS_EVENT}}` — after the user
+converts:
 
 ```java
-Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
-engine.track("u_123", "{{SUCCESS_EVENT}}", Map.of("amount", 49));
+Client c = new Client(Map.of("user_id", "u_123"));
+
+ExperimentResult r = c.getExperiment("checkout_button", Map.of("color", "blue"));
+// ... render the variant ...
+
+c.track("{{SUCCESS_EVENT}}", Map.of("amount", 49));  // no props overload: c.track("{{SUCCESS_EVENT}}")
 ```
 
 `track` is fire-and-forget (POSTed to `/collect` off the calling thread) and is
@@ -63,4 +69,19 @@ experiment exposures to compute lift and significance.
 
 > **Exposure logging:** the server is stateless and never auto-logs exposure.
 > When you actually *present* the treatment, call
-> `engine.logExposure(userId, "checkout_button")` — see [Advanced](advanced.md).
+> `c.logExposure("checkout_button")` on the bound `Client` — it re-evaluates
+> with the bound attributes and emits one exposure for an enrolled user.
+
+## Low-level `Engine` forms (advanced)
+
+The `Engine` exposes the same operations with an explicit user argument — use
+these only when you don't have a bound `Client` (e.g. a batch job iterating over
+users):
+
+```java
+Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
+engine.track("u_123", "{{SUCCESS_EVENT}}", Map.of("amount", 49));
+engine.logExposure("u_123", "checkout_button");   // or logExposure(userMap, name)
+```
+
+See [Advanced](advanced.md).

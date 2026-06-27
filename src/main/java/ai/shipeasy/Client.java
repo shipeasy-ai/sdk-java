@@ -115,4 +115,43 @@ public final class Client {
     public boolean getKillswitch(String name, String switchKey) {
         return engine.getKillswitch(name, switchKey);
     }
+
+    /**
+     * Record a conversion event {@code eventName} for the bound user. The unit
+     * id is derived from the bound attribute map ({@code user_id}, else
+     * {@code anonymous_id}) — no user argument is needed. Fire-and-forget;
+     * delegates to {@link Engine#track(String, String, Map)}.
+     */
+    public void track(String eventName) {
+        track(eventName, null);
+    }
+
+    /**
+     * Record a conversion event {@code eventName} with {@code properties} for the
+     * bound user. The unit id is derived from the bound attribute map
+     * ({@code user_id}, else {@code anonymous_id}). Fire-and-forget; delegates to
+     * {@link Engine#track(String, String, Map)}.
+     */
+    public void track(String eventName, Map<String, Object> properties) {
+        engine.track(unitId(), eventName, properties);
+    }
+
+    /**
+     * Emit an exposure event for experiment {@code experimentName} for the bound
+     * user. Re-evaluates the experiment with the bound attribute map (so
+     * targeting gates and {@code bucketBy} resolve correctly) and POSTs one
+     * exposure only when the user is enrolled. Delegates to
+     * {@link Engine#logExposure(Map, String)}.
+     */
+    public void logExposure(String experimentName) {
+        engine.logExposure(attributes, experimentName);
+    }
+
+    /** Derive the unit id from the bound attributes: {@code user_id} else {@code anonymous_id}. */
+    private String unitId() {
+        Object uid = attributes.get("user_id");
+        if (uid != null) return uid.toString();
+        Object anon = attributes.get("anonymous_id");
+        return anon == null ? null : anon.toString();
+    }
 }
