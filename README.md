@@ -10,6 +10,9 @@ Server SDK for [Shipeasy](https://shipeasy.dev).
 </dependency>
 ```
 
+📖 **Documentation:** [Installation & configuration](docs/pages/installation.md)
+(Maven/Gradle, Spring Boot, Servlet/Jakarta, plain `main()`) · [full docs](docs/)
+
 Configure once at startup, then build a user-bound `Client` per request — every
 evaluation call takes **no user argument** because the user is bound:
 

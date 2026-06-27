@@ -1,11 +1,15 @@
-Configure once, then read `{{RESOURCE_NAME}}` off a user-bound `Client`.
+Read `{{RESOURCE_NAME}}` off a user-bound `Client`. Assumes `configure()` ran at
+startup — see Installation.
 
 ```java
-import ai.shipeasy.Shipeasy;
 import ai.shipeasy.Client;
 import java.util.Map;
 
-Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY")); // once, at startup
+// construct once per callsite (cheap; binds the user)
+Client client = new Client(Map.of("user_id", "u_123"));
 
-boolean enabled = new Client(Map.of("user_id", "u_123")).getFlag("{{RESOURCE_NAME}}");
+boolean enabled = client.getFlag("{{RESOURCE_NAME}}"); // gate name
+// optional default overload — returned ONLY when unresolvable (engine not
+// ready / flag absent), never when the flag legitimately evaluates to false:
+// boolean enabled = client.getFlag("{{RESOURCE_NAME}}", true /* default */);
 ```
