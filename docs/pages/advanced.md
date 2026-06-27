@@ -1,0 +1,129 @@
+# Advanced
+
+## Manual exposure logging
+
+The server is stateless and never auto-logs experiment exposure. Call
+`logExposure` at the point you **present** the treatment so the analysis
+pipeline can attribute conversions:
+
+```java
+Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
+
+// By user id:
+engine.logExposure("u_123", "checkout_button");
+
+// Or with a full attribute map (so targeting gates and bucketBy resolve):
+engine.logExposure(Map.of("user_id", "u_123", "plan", "pro"), "checkout_button");
+```
+
+It re-evaluates the experiment; if the user is enrolled it POSTs one
+`{type:"exposure", experiment, group, user_id, ts}` event to `/collect`. No-op
+in test/snapshot mode or when the user isn't enrolled.
+
+## Private attributes
+
+Mark attribute names that may be used for targeting but must **never** be
+persisted in analytics (LD/Statsig `privateAttributes`). The server evaluates
+locally, so private attrs never leave for evaluation; the only egress is
+`/collect`, and these keys are stripped from every outbound `track()` payload
+(and `see()` extras):
+
+```java
+Engine engine = new Engine(System.getenv("SHIPEASY_SERVER_KEY"))
+    .privateAttributes(List.of("email", "ip"));
+```
+
+Returns `this` for chaining.
+
+## Bucketing identifier (`bucketBy`)
+
+`bucketBy` is a **server-side experiment property** — it is set on the
+experiment in the Shipeasy dashboard (e.g. `company_id`), and the SDK reads it
+from the experiment blob automatically. When set, the experiment buckets on that
+attribute instead of `user_id`/`anonymous_id`. Make sure the bucketing attribute
+is present in the user map you pass. There is no per-call `bucketBy` knob in the
+SDK.
+
+## Sticky bucketing
+
+Supply a `StickyBucketStore` so an enrolled unit stays locked to its
+first-assigned variant even if you change allocation % or group weights
+(changing the experiment salt is the reshuffle lever). Absent ⇒ deterministic
+(fully backward compatible):
+
+```java
+import ai.shipeasy.InMemoryStickyStore;
+
+Engine engine = new Engine(System.getenv("SHIPEASY_SERVER_KEY"))
+    .stickyStore(new InMemoryStickyStore());
+```
+
+`InMemoryStickyStore` is a process-local, thread-safe store (good for tests and
+single-process servers). Implement `StickyBucketStore` (`get(unit)` /
+`set(unit, exp, entry)`) over a shared cache (Redis, DB) for multi-process
+deployments.
+
+## Anonymous visitors — `AnonIdFilter` (zero-config bucketing)
+
+For logged-out traffic you need a *stable* unit so a fractional rollout buckets
+the same on the server and in the browser. `AnonIdFilter` is a servlet `Filter`
+that mints the shared `__se_anon_id` first-party cookie for any request without
+one; evaluations then **default to it** as `anonymous_id`, so a logged-out
+request needs no per-call wiring.
+
+```java
+// Spring Boot
+@Bean
+FilterRegistrationBean<AnonIdFilter> shipeasyAnonId() {
+    var reg = new FilterRegistrationBean<>(new AnonIdFilter());
+    reg.addUrlPatterns("/*");
+    return reg;
+}
+```
+
+```java
+// logged-out request → buckets on the __se_anon_id cookie automatically
+new Client(Map.of()).getFlag("new_checkout");
+```
+
+An explicit `user_id`/`anonymous_id` always wins. The cookie is non-`HttpOnly`
+by design so the browser SDK buckets identically. Non-servlet stacks (Ktor,
+http4k, Javalin) can use the `AnonId` primitives directly.
+
+## Server-side rendering (SSR) bootstrap
+
+Emit the request's evaluated flags as a declarative `<script>` tag so the
+browser SDK has them on first paint. `bootstrapScriptTag` carries the payload in
+`data-*` attributes (**no key** — the server key must never reach the browser);
+the static `se-bootstrap.js` loader hydrates `window.__SE_BOOTSTRAP` and writes
+the `__se_anon_id` cookie:
+
+```java
+Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
+Map<String, Object> user = Map.of("user_id", "u_123");
+
+String head = engine.bootstrapScriptTag(user, anonId)
+            + engine.i18nScriptTag(clientKey, "en:prod");
+
+// …or get the raw payload ({flags, configs, experiments, killswitches}):
+Map<String, Object> boot = engine.evaluate(user);
+```
+
+Overloads let you omit the anon id, or pass `i18nProfile` / `baseUrl` (defaults
+to `https://cdn.shipeasy.ai`).
+
+## Change listeners
+
+Register a listener that fires after a background poll applies **new** data (an
+HTTP 200, not a 304). `onChange` returns a cancel `Runnable`:
+
+```java
+Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
+engine.init(); // start the poll so listeners can fire
+Runnable cancel = engine.onChange(() -> log.info("flags updated"));
+// ... later
+cancel.run(); // unsubscribe
+```
+
+Listeners never fire in local/test/snapshot mode (those do no polling) and a
+throwing listener is isolated — it's logged, others still run.
