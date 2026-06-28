@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Shipeasy · Java Entity Guide</title>
+    <link rel="stylesheet" th:href="@{/guide.css}"/>
+</head>
+<body>
+<main class="wrap">
+
+    <header class="hero">
+        <h1 class="hero-title">Shipeasy · Java Entity Guide</h1>
+        <p class="hero-subtitle">
+            One card per Shipeasy entity — what it is, the value it returns, and
+            the exact Java SDK call that produces it.
+        </p>
+        <div class="banner" role="alert">
+            ⚠ SDK not wired yet — every value below is a placeholder. Add
+            <code>ai.shipeasy:shipeasy</code> and replace the TODOs to make them live.
+        </div>
+    </header>
+
+    <section class="cards">
+        <article class="card" th:each="e : ${entities}"
+                 th:style="'--accent:' + ${e.accent}">
+            <div class="card-top">
+                <span class="pill pill-type" th:text="${e.typeLabel}">TYPE</span>
+                <span class="pill pill-value" th:text="${e.value}">value</span>
+            </div>
+
+            <h2 class="card-key" th:text="${e.key}">entity_key</h2>
+
+            <p class="card-desc" th:text="${e.description}">Description.</p>
+
+            <pre class="code"><code th:text="${e.code}">// sdk call</code></pre>
+
+            <p class="card-meta">
+                <span class="todo">// TODO: once ai.shipeasy:shipeasy is installed</span>
+                <span class="dot">·</span>
+                <span th:text="${e.meta}">meta</span>
+            </p>
+        </article>
+    </section>
+
+    <footer class="footer">
+        <p class="run">
+            Run it: <code>./mvnw spring-boot:run</code> →
+            <a href="http://localhost:8080">http://localhost:8080</a>
+        </p>
+        <p class="next">
+            Next step: add the <code>ai.shipeasy:shipeasy</code> dependency and
+            replace each <code>// TODO</code> with the live call above.
+        </p>
+        <p class="docs">
+            <a href="https://docs.shipeasy.ai">docs.shipeasy.ai</a>
+        </p>
+    </footer>
+
+</main>
+</body>
+</html>

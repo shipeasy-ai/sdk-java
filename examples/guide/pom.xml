@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      Self-contained example. This pom intentionally does NOT depend on the
+      parent Shipeasy Java SDK pom and is NOT wired into it as a module.
+      It declares its own Spring Boot parent so it can be built/run on its own.
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.5</version>
+        <relativePath/> <!-- look up parent from the repository -->
+    </parent>
+
+    <groupId>ai.shipeasy.examples</groupId>
+    <artifactId>shipeasy-guide-example</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>Shipeasy Java Entity Guide</name>
+    <description>A single-page, runnable guide to the Shipeasy entities (placeholder data — SDK not wired yet)</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+
+        <!--
+          TODO: once the SDK is published/installed, add the Shipeasy server SDK
+          and replace the placeholder values in GuideController with live calls:
+
+          <dependency>
+              <groupId>ai.shipeasy</groupId>
+              <artifactId>shipeasy</artifactId>
+              <version>LATEST</version>
+          </dependency>
+        -->
+
+        <!--
+          Test-only: the Shipeasy server SDK, used purely to drive the testing
+          API (Engine.forTesting() + override*) from GuidePageTest. Test scope so
+          it does NOT change what the running app ships. Resolved from the local
+          Maven repo when the SDK is installed (../../ -> `mvn install`); the
+          published coordinates are ai.shipeasy:shipeasy on Maven Central.
+        -->
+        <dependency>
+            <groupId>ai.shipeasy</groupId>
+            <artifactId>shipeasy</artifactId>
+            <version>0.9.0</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Test-only: Spring Boot test harness (JUnit 5 + MockMvc). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
