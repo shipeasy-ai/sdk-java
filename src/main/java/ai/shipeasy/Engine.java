@@ -34,7 +34,7 @@ public final class Engine implements AutoCloseable {
     private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
-    public static final String VERSION = "0.9.0";
+    public static final String VERSION = "0.10.0";
 
     private final String apiKey;
     private final String baseUrl;
@@ -362,8 +362,15 @@ public final class Engine implements AutoCloseable {
         Map<String, Object> ks = (Map<String, Object>) all.get(name);
         if (ks == null) return false;
         if (switchKey == null) return Eval.enabled(ks.get("killed"));
+        // Named-switch semantics (cross-SDK contract): a configured switch key
+        // wins; an UNCONFIGURED key falls back to the kill switch's top-level
+        // value (so getKillswitch(name, variable) is safe before any per-key
+        // override is published).
         Map<String, Object> switches = (Map<String, Object>) ks.get("switches");
-        return switches != null && Eval.enabled(switches.get(switchKey));
+        if (switches != null && switches.containsKey(switchKey)) {
+            return Eval.enabled(switches.get(switchKey));
+        }
+        return Eval.enabled(ks.get("killed"));
     }
 
     /**

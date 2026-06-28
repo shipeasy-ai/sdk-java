@@ -1,4 +1,4 @@
-Read the dynamic config `{{RESOURCE_NAME}}` (with a fallback when absent).
+Read the dynamic config `{{CONFIG_KEY}}` (with a fallback when absent).
 Assumes `configure()` ran at startup — see Installation.
 
 ```java
@@ -9,7 +9,7 @@ import java.util.Map;
 Client client = new Client(Map.of("user_id", "u_123"));
 
 Object cfg = client.getConfig(
-    "{{RESOURCE_NAME}}",          // config name
+    "{{CONFIG_KEY}}",          // config name
     Map.of("title", "Default")); // fallback returned when the config is absent
-// one-arg overload returns null when absent: client.getConfig("{{RESOURCE_NAME}}")
+// one-arg overload returns null when absent: client.getConfig("{{CONFIG_KEY}}")
 ```

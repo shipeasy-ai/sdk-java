@@ -2,17 +2,15 @@
 
 ## `Shipeasy.configure(...)` — call once
 
-`configure` builds the single process-wide `Engine`, registers it as the
-default `see()` engine, and kicks off the initial rules fetch fire-and-forget
-(like `Engine.initOnce()`). It is **first-config-wins idempotent** — the first
-call wins; later calls return the already-built engine without rebuilding.
+`configure()` authenticates with your server key, kicks off the initial rules
+fetch fire-and-forget, and registers the engine used by `see()`. It is
+**first-config-wins** idempotent — the first call wins; later calls are no-ops.
 
 ```java
 import ai.shipeasy.Shipeasy;
-import ai.shipeasy.Engine;
 
 // Simplest form — server key only.
-Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
+Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
 ```
 
 Call this once at startup — `main()`, an `@PostConstruct` bean, or a static
@@ -26,6 +24,10 @@ constructor, mapping your object to the attribute map
 (`{ "user_id": ..., "anonymous_id": ..., <attrs> }`):
 
 ```java
+import ai.shipeasy.Shipeasy;
+import ai.shipeasy.Client;
+import java.util.Map;
+
 Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
     .attributes((Object u) -> {
         MyUser my = (MyUser) u;
@@ -45,51 +47,42 @@ users, or `anonymous_id` for logged-out traffic. If neither is present, the
 engine falls back to the request-scoped `__se_anon_id` cookie resolved by
 [`AnonIdFilter`](advanced.md). An explicit `user_id`/`anonymous_id` always wins.
 
-## `Options` knobs
+## `configure()` options
 
-Build `Options` with `Shipeasy.options(apiKey)` and chain:
+Build options with `Shipeasy.options(apiKey)` and chain the setters, then pass
+them to `Shipeasy.configure(...)`:
 
 | Method | Default | Meaning |
 | --- | --- | --- |
 | `.baseUrl(String)` | `https://edge.shipeasy.dev` | Override the edge API base URL. |
 | `.env(String)` | `"prod"` | Deployment env tagged on usage telemetry and `see()` events. |
 | `.disableTelemetry(boolean)` | `false` | Turn off per-evaluation usage beacons. |
-| `.attributes(Function)` | identity | Map your user object → attribute map. |
+| `.poll(boolean)` | `false` | Start the background poll instead of a one-shot fetch. |
+| `.privateAttributes(List)` | empty | Targeting-only keys stripped from outbound events. See [Advanced](advanced.md). |
+| `.stickyStore(StickyBucketStore)` | none | Pluggable sticky-bucketing store. See [Advanced](advanced.md). |
+| `.attributes(Function)` | identity | Map your user object to the attribute map. |
 
 ```java
-Engine engine = Shipeasy.configure(Shipeasy.options(key)
+Shipeasy.configure(Shipeasy.options(key)
     .env("staging")
     .disableTelemetry(true));
 ```
 
 ## One-shot vs background poll
 
-`configure` performs a single fire-and-forget fetch. For a long-running server
-that should pick up rule changes, call `init()` on the returned engine to start
-the background poll (interval driven by the `X-Poll-Interval` response header):
+By default `configure()` performs a single fire-and-forget fetch. For a
+long-running server that should pick up rule changes, pass `.poll(true)` —
+`configure()` owns the whole poll lifecycle (initial fetch + periodic refresh,
+interval driven by the `X-Poll-Interval` response header). You never start a
+poll yourself:
 
 ```java
-Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
-engine.init(); // starts the background poll loop
+Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+    .poll(true));
 ```
 
-## Using the `Engine` directly (advanced)
-
-You can construct and drive an `Engine` yourself instead of the global
-`configure` path — useful for tests or multiple independent keys:
-
-```java
-try (Engine engine = new Engine(System.getenv("SHIPEASY_SERVER_KEY"))) {
-    engine.init();
-    boolean enabled = engine.getFlag("new_checkout", Map.of("user_id", "u_123"));
-    engine.track("u_123", "purchase", Map.of("amount", 49));
-}
-```
-
-> **Breaking change (0.8.0):** the heavyweight client was renamed
-> `Client` → `Engine`; `Client` is now the lightweight user-bound handle.
-> Replace `new Client(key)` with `new Engine(key)` (or, preferably,
-> `Shipeasy.configure(key)`).
+To react when a poll applies new data, register a change listener with
+`Shipeasy.onChange(...)` — see [Advanced](advanced.md).
 
 ## Environment variables
 

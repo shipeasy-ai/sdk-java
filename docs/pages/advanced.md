@@ -7,13 +7,9 @@ The server is stateless and never auto-logs experiment exposure. Call
 pipeline can attribute conversions:
 
 ```java
-Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
-
-// By user id:
-engine.logExposure("u_123", "checkout_button");
-
-// Or with a full attribute map (so targeting gates and bucketBy resolve):
-engine.logExposure(Map.of("user_id", "u_123", "plan", "pro"), "checkout_button");
+// Assumes Shipeasy.configure(...) ran at startup — see Installation.
+Client c = new Client(Map.of("user_id", "u_123", "plan", "pro")); // construct once per callsite
+c.logExposure("checkout_button");
 ```
 
 It re-evaluates the experiment; if the user is enrolled it POSTs one
@@ -29,11 +25,9 @@ locally, so private attrs never leave for evaluation; the only egress is
 (and `see()` extras):
 
 ```java
-Engine engine = new Engine(System.getenv("SHIPEASY_SERVER_KEY"))
-    .privateAttributes(List.of("email", "ip"));
+Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+    .privateAttributes(List.of("email", "ip")));
 ```
-
-Returns `this` for chaining.
 
 ## Bucketing identifier (`bucketBy`)
 
@@ -54,8 +48,8 @@ first-assigned variant even if you change allocation % or group weights
 ```java
 import ai.shipeasy.InMemoryStickyStore;
 
-Engine engine = new Engine(System.getenv("SHIPEASY_SERVER_KEY"))
-    .stickyStore(new InMemoryStickyStore());
+Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+    .stickyStore(new InMemoryStickyStore()));
 ```
 
 `InMemoryStickyStore` is a process-local, thread-safe store (good for tests and
@@ -99,14 +93,11 @@ the static `se-bootstrap.js` loader hydrates `window.__SE_BOOTSTRAP` and writes
 the `__se_anon_id` cookie:
 
 ```java
-Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
+// Assumes Shipeasy.configure(...) ran at startup — see Installation.
 Map<String, Object> user = Map.of("user_id", "u_123");
 
-String head = engine.bootstrapScriptTag(user, anonId)
-            + engine.i18nScriptTag(clientKey, "en:prod");
-
-// …or get the raw payload ({flags, configs, experiments, killswitches}):
-Map<String, Object> boot = engine.evaluate(user);
+String head = Shipeasy.bootstrapScriptTag(user, anonId, "en:prod", null)
+            + Shipeasy.i18nScriptTag(clientKey, "en:prod");
 ```
 
 Overloads let you omit the anon id, or pass `i18nProfile` / `baseUrl` (defaults
@@ -118,9 +109,10 @@ Register a listener that fires after a background poll applies **new** data (an
 HTTP 200, not a 304). `onChange` returns a cancel `Runnable`:
 
 ```java
-Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
-engine.init(); // start the poll so listeners can fire
-Runnable cancel = engine.onChange(() -> log.info("flags updated"));
+// Start the background poll so listeners can fire (configure owns the lifecycle):
+Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY")).poll(true));
+
+Runnable cancel = Shipeasy.onChange(() -> log.info("flags updated"));
 // ... later
 cancel.run(); // unsubscribe
 ```

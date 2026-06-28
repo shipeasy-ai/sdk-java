@@ -1,70 +1,86 @@
 # Testing
 
-The SDK ships no-network factories so unit tests run deterministically without
-hitting the edge.
+Test mode is a drop-in sibling of `Shipeasy.configure(...)` with **no network,
+ever** (no api key needed): `Shipeasy.configureForTesting(...)` seeds the values
+your code under test should see and registers the global engine, so the same
+`new Client(user)` your production code uses reads them back.
 
-## `Engine.forTesting()`
+## `Shipeasy.configureForTesting(...)`
 
-Returns a no-network engine: telemetry is disabled, `init()`/`initOnce()` and
-`track()` are no-ops (they never reach the network), and **no API key is
-required**. Seed each entity with the `override*` setters; an override always
-wins over any fetched value.
+Seed flags, configs, and experiments up front, then read through the ordinary
+bound `Client`. It **replaces** any previously-configured engine, so each test can
+reconfigure freely.
 
 ```java
-import ai.shipeasy.Engine;
+import ai.shipeasy.Shipeasy;
+import ai.shipeasy.Client;
 import ai.shipeasy.ExperimentResult;
 import java.util.Map;
 
-try (Engine c = Engine.forTesting()) {
-    // Flags
-    c.overrideFlag("new_checkout", true);
-    boolean enabled = c.getFlag("new_checkout", Map.of()); // true
+Shipeasy.configureForTesting(Shipeasy.testOptions()
+    .flags(Map.of("new_checkout", true))                       // name -> bool
+    .configs(Map.of("billing_copy", Map.of("title", "Hello"))) // name -> value
+    .experiments(Map.of(                                       // name -> Variant.of(group, params)
+        "checkout_button", Shipeasy.Variant.of("treatment", Map.of("color", "green")))));
 
-    // Configs (any JSON-shaped value)
-    c.overrideConfig("billing_copy", Map.of("title", "Hello"));
-    Object cfg = c.getConfig("billing_copy"); // {title=Hello}
-
-    // Experiments → ExperimentResult(true, group, params)
-    c.overrideExperiment("checkout_button", "treatment", Map.of("color", "green"));
-    ExperimentResult r = c.getExperiment("checkout_button", Map.of(),
-        Map.of("color", "blue"));
-    // r.inExperiment == true, r.group == "treatment", r.params == {color=green}
-
-    // track() is a no-op here — no key, no network call
-    c.track("u_123", "purchase", Map.of("amount", 49));
-
-    c.clearOverrides(); // back to default (no-override) behavior
-}
+Client c = new Client(Map.of("user_id", "u_1"));               // construct once per callsite
+boolean enabled = c.getFlag("new_checkout");                  // true
+Object cfg = c.getConfig("billing_copy");                     // {title=Hello}
+ExperimentResult r = c.getExperiment("checkout_button", Map.of("color", "blue"));
+// r.inExperiment == true, r.group == "treatment", r.params == {color=green}
 ```
 
-The `override*` and `clearOverrides()` setters are also callable on a normal
-`Engine`.
+## On-the-spot overrides
 
-## Offline snapshots — real evaluation, no network
-
-Run the **real** evaluator against a captured rules blob (no overrides needed,
-no network). The JSON file has the shape
-`{ "flags": <body of /sdk/flags>, "experiments": <body of /sdk/experiments> }`:
+Flip individual values mid-test on top of the seed with the package-level
+statics. `Shipeasy.clearOverrides()` drops **every** override — including the
+`configureForTesting` seed (test mode has no blob beneath, so everything reverts
+to the empty-blob defaults).
 
 ```java
-try (Engine c = Engine.fromFile("snapshot.json")) {
-    boolean on = c.getFlag("new_checkout", Map.of("user_id", "u_123"));
-}
+Shipeasy.overrideFlag("new_checkout", false);
+Shipeasy.overrideConfig("billing_copy", Map.of("title", "Bye"));
+Shipeasy.overrideExperiment("checkout_button", "control", Map.of("color", "blue"));
 
-// …or the same two blobs in memory:
-try (Engine c = Engine.fromSnapshot(flagsBlob, experimentsBlob)) {
-    Object cfg = c.getConfig("billing_copy", "fallback");
-}
+Shipeasy.clearOverrides(); // drops the overrides AND the configureForTesting seed
 ```
 
-Snapshot engines are no-network just like `forTesting()` —
-`init()`/`initOnce()`/`track()` are no-ops, telemetry is off, and `override*`
-values still apply **on top of** the snapshot.
+## `Shipeasy.configureForOffline(...)` — real evaluation, no network
 
-## Wiring a test engine into the global `Client` path
+Run the **real** evaluator against a captured rules blob (no overrides needed, no
+network). Optional `flags`/`configs`/`experiments` overrides layer on top, and
+`clearOverrides()` reverts to the snapshot.
 
-If your code under test uses `new Client(user)`, install the test/snapshot
-engine as the global engine in your test setup (the SDK exposes the package-level
-seam used by its own tests) — or refactor the code to take an injected `Engine`
-and call the engine methods directly. For most unit tests, asserting against
-`Engine.forTesting()` / `Engine.fromSnapshot(...)` directly is the simplest path.
+```java
+// From an in-memory snapshot:
+Shipeasy.configureForOffline(Shipeasy.offlineOptions().snapshot(snapshotMap));
+
+// …or from a JSON file on disk:
+Shipeasy.configureForOffline(Shipeasy.offlineOptions().path("shipeasy-snapshot.json"));
+
+Client c = new Client(Map.of("user_id", "u_123"));            // construct once per callsite
+boolean on = c.getFlag("new_checkout");
+```
+
+### Example snapshot file
+
+The file is `{ "flags": <body of /sdk/flags>, "experiments": <body of
+/sdk/experiments> }`. A gate's `rolloutPct` is in basis points (`10000` = 100%):
+
+```json
+{
+  "flags": {
+    "gates": {
+      "new_checkout": { "enabled": true, "rolloutPct": 10000, "salt": "s" }
+    },
+    "configs": {
+      "billing_copy": { "value": { "title": "Hello" } }
+    },
+    "killswitches": {}
+  },
+  "experiments": {
+    "experiments": {},
+    "universes": {}
+  }
+}
+```

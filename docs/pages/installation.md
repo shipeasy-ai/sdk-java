@@ -13,20 +13,20 @@
 <dependency>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.8.0</version>
+  <version>0.10.0</version>
 </dependency>
 ```
 
 ### Gradle (Kotlin DSL)
 
 ```kotlin
-implementation("ai.shipeasy:shipeasy:0.8.0")
+implementation("ai.shipeasy:shipeasy:0.10.0")
 ```
 
 ### Gradle (Groovy DSL)
 
 ```groovy
-implementation 'ai.shipeasy:shipeasy:0.8.0'
+implementation 'ai.shipeasy:shipeasy:0.10.0'
 ```
 
 ## Optional, `provided`-scope dependencies
@@ -41,9 +41,8 @@ These are **not** pulled into your deployment unless you already supply them:
 ## Imports
 
 ```java
-import ai.shipeasy.Shipeasy;          // configure() entry point
-import ai.shipeasy.Client;            // user-bound handle
-import ai.shipeasy.Engine;            // heavyweight handle (advanced)
+import ai.shipeasy.Shipeasy;          // configure() entry point + package-level statics
+import ai.shipeasy.Client;            // the cheap, user-bound handle for all reads
 import ai.shipeasy.ExperimentResult;  // experiment return type
 import ai.shipeasy.FlagDetail;        // value + reason
 ```
@@ -52,22 +51,23 @@ import ai.shipeasy.FlagDetail;        // value + reason
 
 ## Configure once, then bind a `Client` per request
 
-Configuration happens **once per process**. After it returns, construct a
-cheap, user-bound `Client` per request — every evaluation call then takes **no
-user argument** because the user is bound at construction.
+Configuration happens **once per process**. `Shipeasy.configure(...)`
+authenticates with your server key, kicks off the initial rules fetch
+(fire-and-forget), and registers the engine used by `see()`. It is
+**first-config-wins** idempotent — the first call wins; later calls are no-ops.
+
+After it returns, construct a cheap, user-bound `Client` per request. Every read
+then takes **no user argument** because the user is bound at construction.
 
 ```java
 import ai.shipeasy.Shipeasy;
 import ai.shipeasy.Client;
 import java.util.Map;
 
-// Once, at startup. Builds the single process-wide Engine, registers it as the
-// default see() engine, and kicks off the initial rules fetch fire-and-forget.
-// First-config-wins idempotent — later calls return the already-built engine.
+// Once, at startup.
 Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
 
-// Per user / per request. The user is bound at construction (cheap — forwards
-// to the global Engine; owns no HTTP, cache or timer).
+// Per user / per request.
 Client c = new Client(Map.of("user_id", "u_123", "plan", "pro"));
 
 boolean enabled = c.getFlag("new_checkout");
@@ -76,7 +76,7 @@ boolean enabled = c.getFlag("new_checkout");
 ### The `attributes` transform
 
 If your domain user object is not already a Shipeasy attribute map, register a
-transform **once** at `configure` time. It runs once, in the `Client`
+transform **once** at `configure()` time. It runs once, in the `Client`
 constructor, mapping your object to the attribute map
 (`{ "user_id": ..., "anonymous_id": ..., <attrs> }`):
 
@@ -102,26 +102,37 @@ engine falls back to the request-scoped `__se_anon_id` cookie resolved by
 
 ### One-shot vs background poll
 
-`configure` performs a single fire-and-forget fetch. For a long-running server
-that should pick up rule changes, call `init()` on the returned `Engine` to
-start the background poll (interval driven by the `X-Poll-Interval` response
-header):
+By default `configure()` performs a single fire-and-forget fetch. For a
+long-running server that should pick up rule changes without a redeploy, pass
+`.poll(true)` — `configure()` then owns the full poll lifecycle (initial fetch +
+periodic refresh). You never start a poll yourself:
 
 ```java
-Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
-engine.init(); // starts the background poll loop
+Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+    .poll(true));
 ```
 
-### `Options` knobs
+### `configure()` options
 
-Build `Options` with `Shipeasy.options(apiKey)` and chain:
+Build options with `Shipeasy.options(apiKey)` and chain the setters, then pass
+the result to `Shipeasy.configure(...)`:
 
 | Method | Default | Meaning |
 | --- | --- | --- |
 | `.baseUrl(String)` | `https://edge.shipeasy.dev` | Override the edge API base URL. |
 | `.env(String)` | `"prod"` | Deployment env tagged on usage telemetry and `see()` events. |
 | `.disableTelemetry(boolean)` | `false` | Turn off per-evaluation usage beacons. |
-| `.attributes(Function)` | identity | Map your user object → attribute map. |
+| `.poll(boolean)` | `false` | Start the background poll (initial fetch + periodic refresh) instead of a one-shot fetch. |
+| `.privateAttributes(List)` | empty | Attribute keys usable for targeting but stripped from outbound events. See [Advanced](advanced.md). |
+| `.stickyStore(StickyBucketStore)` | none | Pluggable sticky-bucketing store. See [Advanced](advanced.md). |
+| `.attributes(Function)` | identity | Map your user object to the attribute map. |
+
+```java
+Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+    .env("staging")
+    .poll(true)
+    .disableTelemetry(true));
+```
 
 ### Environment variables
 
@@ -138,7 +149,7 @@ framework. Build a `Client` per request thereafter.
 
 ### Spring Boot — `@PostConstruct`
 
-Run `configure` from a bean's `@PostConstruct`:
+Run `configure()` from a bean's `@PostConstruct`:
 
 ```java
 import ai.shipeasy.Shipeasy;
@@ -149,29 +160,30 @@ import org.springframework.stereotype.Component;
 class ShipeasyConfig {
     @PostConstruct
     void init() {
-        Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
-        // For a long-running server, also start the background poll:
-        // Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY")).init();
+        // For a long-running server, start the background poll:
+        Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+            .poll(true));
     }
 }
 ```
 
-### Spring Boot — `@Bean` (with the `attributes` transform)
+### Spring Boot — `@PostConstruct` with the `attributes` transform
 
-A `@Bean` factory is the natural home when you map your own principal type:
+When you map your own principal type to the attribute map, register the
+transform at `configure()` time, then build a `Client(principal)` per request:
 
 ```java
 import ai.shipeasy.Shipeasy;
-import ai.shipeasy.Engine;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import jakarta.annotation.PostConstruct;
+import org.springframework.stereotype.Component;
 import java.util.Map;
 
-@Configuration
-class ShipeasyConfiguration {
-    @Bean
-    Engine shipeasyEngine() {
-        return Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+@Component
+class ShipeasyConfig {
+    @PostConstruct
+    void init() {
+        Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+            .poll(true)
             .attributes((Object u) -> {
                 MyPrincipal p = (MyPrincipal) u;
                 return Map.of("user_id", p.id(), "plan", p.plan());
@@ -186,13 +198,13 @@ import ai.shipeasy.Client;
 
 @GetMapping("/checkout")
 String checkout(@AuthenticationPrincipal MyPrincipal principal) {
-    boolean on = new Client(principal).getFlag("new_checkout");
-    return on ? "v2" : "v1";
+    Client c = new Client(principal);  // construct once per callsite
+    return c.getFlag("new_checkout") ? "v2" : "v1";
 }
 ```
 
-For logged-out traffic, register the `AnonIdFilter` so anonymous bucketing is
-shared with the browser SDK (see Servlet/Jakarta below).
+For logged-out traffic, register `AnonIdFilter` so anonymous bucketing is shared
+with the browser SDK (see Servlet/Jakarta below).
 
 ### Servlet / Jakarta — `ServletContextListener` + `AnonIdFilter`
 
@@ -210,7 +222,8 @@ import jakarta.servlet.annotation.WebListener;
 public class ShipeasyBootstrap implements ServletContextListener {
     @Override
     public void contextInitialized(ServletContextEvent sce) {
-        Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
+        Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+            .poll(true));
     }
 }
 ```
@@ -257,34 +270,13 @@ import ai.shipeasy.Client;
 import java.util.Map;
 
 public class App {
-    public static void main(String[] args) throws Exception {
-        // Configure once; init() starts the background poll for a long-running app.
-        Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY")).init();
+    public static void main(String[] args) {
+        // Configure once; poll(true) keeps a long-running app fresh.
+        Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+            .poll(true));
 
         Client c = new Client(Map.of("user_id", "u_123"));
         System.out.println(c.getFlag("new_checkout"));
     }
 }
 ```
-
-### Using the `Engine` directly (advanced)
-
-You can construct and drive an `Engine` yourself instead of the global
-`configure` path — useful for tests or multiple independent keys. It is
-`AutoCloseable`:
-
-```java
-import ai.shipeasy.Engine;
-import java.util.Map;
-
-try (Engine engine = new Engine(System.getenv("SHIPEASY_SERVER_KEY"))) {
-    engine.init();
-    boolean enabled = engine.getFlag("new_checkout", Map.of("user_id", "u_123"));
-    engine.track("u_123", "purchase", Map.of("amount", 49));
-}
-```
-
-> **Breaking change (0.8.0):** the heavyweight client was renamed
-> `Client` → `Engine`; `Client` is now the lightweight user-bound handle.
-> Replace `new Client(key)` with `new Engine(key)` (or, preferably,
-> `Shipeasy.configure(key)`).

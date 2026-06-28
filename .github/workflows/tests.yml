@@ -1,0 +1,44 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ["11", "17", "21"]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      - name: Test
+        run: mvn -B test
+
+  readme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: README + embedded skill are generated from docs/ — check they're in sync
+        run: |
+          java tools/GenReadme.java
+          git diff --exit-code README.md src/main/resources/shipeasy-skill/SKILL.md \
+            || { echo "::error::README.md or the embedded skill is out of date — run 'java tools/GenReadme.java' and commit."; exit 1; }

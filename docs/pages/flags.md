@@ -1,22 +1,18 @@
 # Feature flags
 
-`getFlag` evaluates a boolean feature gate for a user against the cached rules
-blob. Evaluation is **local** — no network call per evaluation.
+`getFlag` evaluates a boolean feature gate for the bound user against the cached
+rules blob. Evaluation is **local** — no network call per evaluation.
 
-## Bound `Client` form
+## Reading a flag
+
+Construct a `Client` for the user, then read the gate by name:
 
 ```java
+import ai.shipeasy.Client;
+import java.util.Map;
+
 Client c = new Client(Map.of("user_id", "u_123", "plan", "pro"));
 boolean enabled = c.getFlag("new_checkout");
-```
-
-## Low-level `Engine` form
-
-The engine takes an explicit user map per call:
-
-```java
-Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
-boolean enabled = engine.getFlag("new_checkout", Map.of("user_id", "u_123"));
 ```
 
 ## Boolean semantics
@@ -35,9 +31,6 @@ when a flag legitimately evaluates to `false`:
 // returns `true` only if the flag is missing or the engine isn't ready;
 // a flag that evaluates to false returns false (not the default).
 boolean enabled = c.getFlag("new_checkout", true);
-
-// Engine form takes the user argument explicitly:
-boolean on = engine.getFlag("new_checkout", Map.of("user_id", "u_123"), true);
 ```
 
 ## Evaluation detail and reason

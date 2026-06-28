@@ -7,6 +7,9 @@ should be disabled).
 ## Whole kill switch
 
 ```java
+import ai.shipeasy.Client;
+import java.util.Map;
+
 Client c = new Client(Map.of("user_id", "u_123"));
 boolean killed = c.getKillswitch("panic_button");
 if (killed) {
@@ -26,15 +29,9 @@ boolean checkoutOff = c.getKillswitch("panic_button", "checkout");
 ```
 
 With `switchKey`, the call returns `true` when that specific named switch is on.
-Unknown switches return `false`. A `null` `switchKey` reads the whole-kill-switch
-killed state.
+An **unconfigured** switch key falls back to the kill switch's top-level value,
+so a switch you haven't explicitly set tracks whether the whole kill switch is
+killed. A `null` `switchKey` reads the whole-kill-switch killed state directly.
 
-## Low-level `Engine` form
-
-Kill switches are not user-scoped, so the engine form takes no user argument:
-
-```java
-Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
-boolean killed       = engine.getKillswitch("panic_button");
-boolean checkoutOff  = engine.getKillswitch("panic_button", "checkout");
-```
+Kill switches are not user-scoped — the bound user is irrelevant to the result,
+but reading them off the same `Client` keeps everything one-stop.

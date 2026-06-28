@@ -64,10 +64,36 @@ public final class Shipeasy {
         String baseUrl;
         String env = "prod";
         boolean disableTelemetry;
+        boolean poll;
+        java.util.List<String> privateAttributes = java.util.List.of();
+        StickyBucketStore stickyStore;
         Function<Object, Map<String, Object>> attributes = IDENTITY;
 
         private Options(String apiKey) {
             this.apiKey = apiKey;
+        }
+
+        /**
+         * Long-running server: start the background poll internally (initial fetch
+         * + periodic refresh) so flags stay fresh without a redeploy. Default
+         * {@code false} (a one-shot fire-and-forget fetch). Either way you never
+         * call {@link Engine#init()} yourself — {@code configure} owns the lifecycle.
+         */
+        public Options poll(boolean poll) {
+            this.poll = poll;
+            return this;
+        }
+
+        /** Attribute keys usable for targeting but stripped from outbound events. */
+        public Options privateAttributes(java.util.List<String> attrs) {
+            this.privateAttributes = attrs == null ? java.util.List.of() : java.util.List.copyOf(attrs);
+            return this;
+        }
+
+        /** Pluggable sticky-bucketing store (absent ⇒ deterministic). */
+        public Options stickyStore(StickyBucketStore store) {
+            this.stickyStore = store;
+            return this;
         }
 
         /** Override the edge base URL (default {@code https://edge.shipeasy.dev}). */
@@ -126,13 +152,20 @@ public final class Shipeasy {
         synchronized (LOCK) {
             if (engine != null) return engine;
             Engine e = new Engine(opts.apiKey, opts.baseUrl, opts.env, opts.disableTelemetry);
+            e.privateAttributes(opts.privateAttributes).stickyStore(opts.stickyStore);
             attributes = opts.attributes;
             engine = e;
-            // One-shot fetch, fire-and-forget, so new Client(user).getFlag(...)
-            // resolves against real rules without an explicit init call.
+            // Fetch lifecycle owned by configure (the docs never tell a user to
+            // call init() themselves): poll → initial fetch + background refresh;
+            // default → one-shot fire-and-forget fetch.
+            final boolean poll = opts.poll;
             Thread t = new Thread(() -> {
                 try {
-                    e.initOnce();
+                    if (poll) {
+                        e.init();
+                    } else {
+                        e.initOnce();
+                    }
                 } catch (Exception ex) {
                     log.warning("Shipeasy.configure initial fetch failed: " + ex.getMessage());
                 }
@@ -179,5 +212,228 @@ public final class Shipeasy {
             engine = e;
             attributes = attrs == null ? IDENTITY : attrs;
         }
+    }
+
+    // ---- Doc-23 configure() family + package-level helpers ----
+    //
+    // The documented surface is exactly configure() (+ these test/offline
+    // siblings) and the bound Client(user); the heavyweight Engine stays public
+    // but undocumented. These statics let users avoid naming the Engine in tests,
+    // overrides, change listeners, and SSR tags.
+
+    /** A forced experiment enrolment seed: {@code Variant.of(group, params)}. */
+    public static final class Variant {
+        final String group;
+        final Object params;
+
+        private Variant(String group, Object params) {
+            this.group = group;
+            this.params = params;
+        }
+
+        public static Variant of(String group, Object params) {
+            return new Variant(group, params);
+        }
+    }
+
+    /** Seeds for {@link #configureForTesting(TestOptions)} (and its offline sibling). */
+    public static class TestOptions {
+        Function<Object, Map<String, Object>> attributes = IDENTITY;
+        Map<String, Boolean> flags = Map.of();
+        Map<String, Object> configs = Map.of();
+        Map<String, Variant> experiments = Map.of();
+
+        /** Same transform as {@link Options#attributes} (default identity). */
+        public TestOptions attributes(Function<Object, Map<String, Object>> a) {
+            this.attributes = a == null ? IDENTITY : a;
+            return this;
+        }
+
+        /** Forced {@code getFlag} results: {@code name -> bool}. */
+        public TestOptions flags(Map<String, Boolean> f) {
+            this.flags = f == null ? Map.of() : f;
+            return this;
+        }
+
+        /** Forced {@code getConfig} results: {@code name -> value}. */
+        public TestOptions configs(Map<String, Object> c) {
+            this.configs = c == null ? Map.of() : c;
+            return this;
+        }
+
+        /** Forced enrolments: {@code name -> Variant.of(group, params)}. */
+        public TestOptions experiments(Map<String, Variant> e) {
+            this.experiments = e == null ? Map.of() : e;
+            return this;
+        }
+    }
+
+    public static TestOptions testOptions() {
+        return new TestOptions();
+    }
+
+    /** Offline source + seeds. Provide exactly one of {@code path} / {@code snapshot}. */
+    public static final class OfflineOptions extends TestOptions {
+        String path;
+        Map<String, Object> snapshot;
+
+        /** A JSON file {@code {"flags": ..., "experiments": ...}}. */
+        public OfflineOptions path(String p) {
+            this.path = p;
+            return this;
+        }
+
+        /** In-memory {@code {"flags": <body>, "experiments": <body>}}. */
+        public OfflineOptions snapshot(Map<String, Object> s) {
+            this.snapshot = s;
+            return this;
+        }
+
+        @Override public OfflineOptions attributes(Function<Object, Map<String, Object>> a) {
+            super.attributes(a);
+            return this;
+        }
+
+        @Override public OfflineOptions flags(Map<String, Boolean> f) {
+            super.flags(f);
+            return this;
+        }
+
+        @Override public OfflineOptions configs(Map<String, Object> c) {
+            super.configs(c);
+            return this;
+        }
+
+        @Override public OfflineOptions experiments(Map<String, Variant> e) {
+            super.experiments(e);
+            return this;
+        }
+    }
+
+    public static OfflineOptions offlineOptions() {
+        return new OfflineOptions();
+    }
+
+    /**
+     * Configure Shipeasy in <strong>test mode</strong> — a drop-in sibling of
+     * {@link #configure} with no network, ever (no api key needed). Seed the
+     * values your code under test should see, then read them through the ordinary
+     * {@code new Client(user)}. REPLACES any previously-configured engine, so tests
+     * can reconfigure freely.
+     */
+    public static Engine configureForTesting() {
+        return configureForTesting(new TestOptions());
+    }
+
+    public static Engine configureForTesting(TestOptions o) {
+        Engine e = Engine.forTesting();
+        applyOverrides(e, o);
+        installReplace(e, o.attributes);
+        return e;
+    }
+
+    /**
+     * Configure Shipeasy <strong>offline</strong> — evaluate the REAL rules from an
+     * in-memory snapshot or a JSON file, with no network. Optional flag/config/
+     * experiment overrides layer on top. REPLACES any previously-configured engine.
+     */
+    @SuppressWarnings("unchecked")
+    public static Engine configureForOffline(OfflineOptions o) throws java.io.IOException {
+        Engine e;
+        if (o.path != null) {
+            e = Engine.fromFile(o.path);
+        } else if (o.snapshot != null) {
+            Object flags = o.snapshot.get("flags");
+            Object exps = o.snapshot.get("experiments");
+            e = Engine.fromSnapshot(
+                flags instanceof Map ? (Map<String, Object>) flags : Map.of(),
+                exps instanceof Map ? (Map<String, Object>) exps : Map.of());
+        } else {
+            throw new IllegalArgumentException(
+                "configureForOffline requires either a path(...) or a snapshot(...) source");
+        }
+        applyOverrides(e, o);
+        installReplace(e, o.attributes);
+        return e;
+    }
+
+    private static void applyOverrides(Engine e, TestOptions o) {
+        o.flags.forEach((name, value) -> e.overrideFlag(name, value));
+        o.configs.forEach(e::overrideConfig);
+        o.experiments.forEach((name, v) -> e.overrideExperiment(name, v.group, v.params));
+    }
+
+    private static void installReplace(Engine e, Function<Object, Map<String, Object>> attrs) {
+        synchronized (LOCK) {
+            if (engine != null && engine != e) engine.close();
+            engine = e;
+            attributes = attrs == null ? IDENTITY : attrs;
+        }
+    }
+
+    private static Engine requireEngine(String fn) {
+        Engine e = engine;
+        if (e == null) {
+            throw new IllegalStateException(
+                "Shipeasy." + fn + "(...) called before Shipeasy.configure(...) (or a configureFor* sibling)");
+        }
+        return e;
+    }
+
+    /**
+     * Force {@code getFlag(name)} to {@code value} on the spot, for the current
+     * configuration — a quick in-test override layered on top of whatever
+     * {@link #configureForTesting}/{@link #configureForOffline} (or {@link #configure})
+     * set up. Wins over the blob until {@link #clearOverrides()}.
+     */
+    public static void overrideFlag(String name, boolean value) {
+        requireEngine("overrideFlag").overrideFlag(name, value);
+    }
+
+    /** Force {@code getConfig(name)} to {@code value} on the spot (see {@link #overrideFlag}). */
+    public static void overrideConfig(String name, Object value) {
+        requireEngine("overrideConfig").overrideConfig(name, value);
+    }
+
+    /** Force {@code getExperiment(name)} to enrol in {@code group}/{@code params} (see {@link #overrideFlag}). */
+    public static void overrideExperiment(String name, String group, Object params) {
+        requireEngine("overrideExperiment").overrideExperiment(name, group, params);
+    }
+
+    /**
+     * Drop every on-the-spot flag/config/experiment override — INCLUDING the seed
+     * from {@link #configureForTesting} (test mode has no blob beneath). Under
+     * {@link #configureForOffline} evaluations revert to the snapshot.
+     */
+    public static void clearOverrides() {
+        requireEngine("clearOverrides").clearOverrides();
+    }
+
+    /**
+     * Register a listener fired after a background poll fetches NEW data. Returns
+     * an unsubscribe {@link Runnable}. Requires {@code configure(options(key).poll(true))}.
+     */
+    public static Runnable onChange(Runnable listener) {
+        return requireEngine("onChange").onChange(listener);
+    }
+
+    /** SSR bootstrap {@code <script>} tag for a request, via the configured global engine. */
+    public static String bootstrapScriptTag(Map<String, Object> user) {
+        return requireEngine("bootstrapScriptTag").bootstrapScriptTag(user);
+    }
+
+    /** SSR bootstrap {@code <script>} tag (full form), via the configured global engine. */
+    public static String bootstrapScriptTag(Map<String, Object> user, String anonId, String i18nProfile, String baseUrl) {
+        return requireEngine("bootstrapScriptTag").bootstrapScriptTag(user, anonId, i18nProfile, baseUrl);
+    }
+
+    /** i18n loader {@code <script>} tag (public client key), via the configured global engine. */
+    public static String i18nScriptTag(String clientKey, String profile) {
+        return requireEngine("i18nScriptTag").i18nScriptTag(clientKey, profile);
+    }
+
+    /** i18n loader {@code <script>} tag (with base URL), via the configured global engine. */
+    public static String i18nScriptTag(String clientKey, String profile, String baseUrl) {
+        return requireEngine("i18nScriptTag").i18nScriptTag(clientKey, profile, baseUrl);
     }
 }

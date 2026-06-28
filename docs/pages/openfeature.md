@@ -10,31 +10,32 @@ supplies it, and non-OpenFeature users never load this class.
 
 ## Wiring
 
+Assumes `Shipeasy.configure(...)` ran at startup — see [Installation](installation.md).
+The **no-arg** `new ShipeasyProvider()` resolves the configured global engine, so
+OpenFeature is wired without naming the engine:
+
 ```java
 import dev.openfeature.sdk.OpenFeatureAPI;
 import dev.openfeature.sdk.MutableContext;
-import ai.shipeasy.Engine;
 import ai.shipeasy.openfeature.ShipeasyProvider;
 
-Engine engine = new Engine(System.getenv("SHIPEASY_SERVER_KEY"));
-OpenFeatureAPI.getInstance().setProviderAndWait(new ShipeasyProvider(engine));
+// new ShipeasyProvider() (no arg) resolves the engine built by Shipeasy.configure(...)
+OpenFeatureAPI.getInstance().setProviderAndWait(new ShipeasyProvider());
 
 var of = OpenFeatureAPI.getInstance().getClient();
 boolean on = of.getBooleanValue("new_checkout", false, new MutableContext("u1"));
 ```
 
-`setProviderAndWait` triggers `initialize`, which calls `engine.initOnce()` to
-load the rules blob once; OpenFeature fires `Ready` on return. `shutdown()`
-closes the engine.
+`setProviderAndWait` triggers `initialize`, which loads the rules blob once;
+OpenFeature fires `Ready` on return.
 
 ## How values map
 
-The provider is a pure adapter over `Engine` — no change to evaluation:
+The provider is a pure adapter — no change to evaluation:
 
-- **Booleans** → gate evaluation (`Engine.getFlagDetail`).
-- **Strings, integers, doubles, objects** → dynamic configs
-  (`Engine.getConfig`), with type coercion. A wrong-typed config returns the
-  default with `TYPE_MISMATCH`.
+- **Booleans** → gate evaluation.
+- **Strings, integers, doubles, objects** → dynamic configs, with type coercion.
+  A wrong-typed config returns the default with `TYPE_MISMATCH`.
 
 ## Context → user
 

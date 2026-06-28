@@ -4,9 +4,12 @@
 name from the cached rules blob. Configs are **not user-scoped** — they resolve
 to a single value per key.
 
-## Bound `Client` form
+## Reading a config
 
 ```java
+import ai.shipeasy.Client;
+import java.util.Map;
+
 Client c = new Client(Map.of("user_id", "u_123"));
 Object copy = c.getConfig("billing_copy");
 ```
@@ -23,19 +26,9 @@ String title = (String) copy.get("title");
 ## Defaults
 
 The default-value overload returns the fallback when the config key is absent
-(no override and not present in the blob):
+(no override and not present in the blob). The one-argument overload returns
+`null` when the key is absent or the engine isn't initialized:
 
 ```java
 Object copy = c.getConfig("billing_copy", Map.of("title", "Default"));
 ```
-
-## Low-level `Engine` form
-
-```java
-Engine engine = Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
-Object copy = engine.getConfig("billing_copy");
-Object withDefault = engine.getConfig("billing_copy", "fallback");
-```
-
-`getConfig` returns `null` when the engine isn't initialized or the key is
-absent and no default was supplied.

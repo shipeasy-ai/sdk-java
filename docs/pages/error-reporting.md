@@ -31,18 +31,11 @@ try {
 Reporting never raises into your code — a failure in dispatch is swallowed and
 logged.
 
-## Global vs instance dispatch
+## Dispatch
 
-The static `ai.shipeasy.See.see(...)` dispatches against the **last-constructed
-`Engine`** (registered automatically in the engine constructor, and by
-`Shipeasy.configure`). A global call before any engine exists logs a warning and
-returns a no-op chain — it never throws.
-
-To target a specific engine, call the instance method:
-
-```java
-engine.see(e).causesThe("checkout").to("use cached prices");
-```
+The static `ai.shipeasy.See.see(...)` dispatches against the engine that
+`Shipeasy.configure(...)` built — no handle to pass. A global call before
+`configure` runs logs a warning and returns a no-op chain — it never throws.
 
 ## Violations (non-throwable problems)
 

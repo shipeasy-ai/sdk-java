@@ -46,8 +46,32 @@ public final class ShipeasyProvider implements FeatureProvider {
 
     private final Engine engine;
 
+    /**
+     * Wrap an explicit {@link Engine} (advanced/back-compat use).
+     */
     public ShipeasyProvider(Engine engine) {
         this.engine = engine;
+    }
+
+    /**
+     * Global form: resolve the engine built by {@code Shipeasy.configure(...)}, so
+     * OpenFeature is wired without naming the {@link Engine}:
+     *
+     * <pre>{@code
+     * Shipeasy.configure(System.getenv("SHIPEASY_SERVER_KEY"));
+     * OpenFeatureAPI.getInstance().setProviderAndWait(new ShipeasyProvider());
+     * }</pre>
+     *
+     * @throws IllegalStateException if {@code Shipeasy.configure(...)} has not run.
+     */
+    public ShipeasyProvider() {
+        Engine e = ai.shipeasy.Shipeasy.engine();
+        if (e == null) {
+            throw new IllegalStateException(
+                "new ShipeasyProvider() resolves the configured global engine — "
+                    + "call Shipeasy.configure(...) first, or pass an Engine explicitly.");
+        }
+        this.engine = e;
     }
 
     @Override

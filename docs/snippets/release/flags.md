@@ -1,4 +1,4 @@
-Read `{{RESOURCE_NAME}}` off a user-bound `Client`. Assumes `configure()` ran at
+Read `{{FLAG_KEY}}` off a user-bound `Client`. Assumes `configure()` ran at
 startup — see Installation.
 
 ```java
@@ -8,8 +8,8 @@ import java.util.Map;
 // construct once per callsite (cheap; binds the user)
 Client client = new Client(Map.of("user_id", "u_123"));
 
-boolean enabled = client.getFlag("{{RESOURCE_NAME}}"); // gate name
+boolean enabled = client.getFlag("{{FLAG_KEY}}"); // gate name
 // optional default overload — returned ONLY when unresolvable (engine not
 // ready / flag absent), never when the flag legitimately evaluates to false:
-// boolean enabled = client.getFlag("{{RESOURCE_NAME}}", true /* default */);
+// boolean enabled = client.getFlag("{{FLAG_KEY}}", true /* default */);
 ```

@@ -1,4 +1,4 @@
-Bucket a user into `{{RESOURCE_NAME}}`, then track the `{{SUCCESS_EVENT}}`
+Bucket a user into `{{EXPERIMENT_KEY}}`, then track the `{{SUCCESS_EVENT}}`
 conversion. Assumes `configure()` ran at startup — see Installation.
 
 ```java
@@ -10,7 +10,7 @@ import java.util.Map;
 Client client = new Client(Map.of("user_id", "u_123"));
 
 ExperimentResult r = client.getExperiment(
-    "{{RESOURCE_NAME}}",        // experiment name
+    "{{EXPERIMENT_KEY}}",        // experiment name
     Map.of("color", "blue"));   // defaultParams — filled in when not enrolled
 
 if (r.inExperiment && "treatment".equals(r.group)) {
