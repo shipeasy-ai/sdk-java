@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.0
+
+Ship the generated OpenAPI **admin** client alongside the flags SDK.
+
+### Added
+
+- **`ai.shipeasy.admin`** — a generated (OpenAPI, okhttp + gson) client for the
+  Shipeasy **admin** API (flags / experiments / configs / kill switches / metrics
+  / errors / ops — full CRUD + reads), bundled into the `ai.shipeasy:shipeasy`
+  artifact. Adds okhttp/gson/gson-fire as transitive deps (jakarta.servlet stays
+  `provided`, so Android consumers are unaffected). Generated via
+  `openapi-generator` (see `apps/mobile` → `pnpm gen:clients java`).
+
 ## 0.10.0
 
 The uniform SDK DX standard (experiment-platform doc 23). The documented surface

@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.10.0</version>
+  <version>0.11.0</version>
   <packaging>jar</packaging>
   <name>shipeasy</name>
   <description>Shipeasy server SDK for Java — flags, configs, experiments, metrics.</description>
@@ -66,6 +66,44 @@
       <artifactId>junit-jupiter</artifactId>
       <version>5.10.0</version>
       <scope>test</scope>
+    </dependency>
+
+    <!-- Generated OpenAPI admin client (ai.shipeasy.admin, okhttp-gson). These
+         are transitive to consumers so the admin client works out of the box.
+         okhttp pulls okio; gson-fire + gson do JSON; jsr305 supplies
+         javax.annotation.Nonnull/Nullable used by the generated models. -->
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>okhttp</artifactId>
+      <version>4.12.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>logging-interceptor</artifactId>
+      <version>4.12.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+      <version>2.10.1</version>
+    </dependency>
+    <dependency>
+      <groupId>io.gsonfire</groupId>
+      <artifactId>gson-fire</artifactId>
+      <version>1.9.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.findbugs</groupId>
+      <artifactId>jsr305</artifactId>
+      <version>3.0.2</version>
+    </dependency>
+    <!-- javax.annotation.Generated on generated models. Compile-time only
+         (SOURCE retention), so `provided` keeps it off consumer runtimes. -->
+    <dependency>
+      <groupId>javax.annotation</groupId>
+      <artifactId>javax.annotation-api</artifactId>
+      <version>1.3.2</version>
+      <scope>provided</scope>
     </dependency>
   </dependencies>
 
