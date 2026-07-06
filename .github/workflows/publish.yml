@@ -61,3 +61,28 @@ jobs:
             exit 0
           fi
           mvn -B -P release deploy
+
+      # The optional admin API client ships as a SEPARATE artifact
+      # (ai.shipeasy:shipeasy-admin-java, source under ./admin) so the flags SDK
+      # stays dependency-light. Build + deploy it too (its own version check).
+      - name: Check admin client version on Maven Central
+        id: check_admin
+        run: |
+          ADMIN_VER=$(cd admin && mvn -q help:evaluate -Dexpression=project.version -DforceStdout)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://repo1.maven.org/maven2/ai/shipeasy/shipeasy-admin-java/${ADMIN_VER}/shipeasy-admin-java-${ADMIN_VER}.pom")
+          echo "ver=$ADMIN_VER" >> "$GITHUB_OUTPUT"
+          if [ "$STATUS" = "200" ]; then echo "skip=1" >> "$GITHUB_OUTPUT"; else echo "skip=0" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Deploy admin client to Central Portal
+        if: steps.check_admin.outputs.skip != '1'
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ] || [ -z "$CENTRAL_USERNAME" ]; then
+            echo "::warning::Maven Central credentials not configured — skipping admin publish."
+            exit 0
+          fi
+          cd admin && mvn -B -P release deploy

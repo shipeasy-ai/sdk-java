@@ -6,12 +6,14 @@ Ship the generated OpenAPI **admin** client alongside the flags SDK.
 
 ### Added
 
-- **`ai.shipeasy.admin`** — a generated (OpenAPI, okhttp + gson) client for the
-  Shipeasy **admin** API (flags / experiments / configs / kill switches / metrics
-  / errors / ops — full CRUD + reads), bundled into the `ai.shipeasy:shipeasy`
-  artifact. Adds okhttp/gson/gson-fire as transitive deps (jakarta.servlet stays
-  `provided`, so Android consumers are unaffected). Generated via
-  `openapi-generator` (see `apps/mobile` → `pnpm gen:clients java`).
+- **`ai.shipeasy:shipeasy-admin-java`** — a NEW, separate, opt-in artifact (source
+  under `./admin`): a generated (OpenAPI, okhttp + gson) client for the Shipeasy
+  **admin** API (flags / experiments / configs / kill switches / metrics / errors
+  / ops — full CRUD + reads). It ships as its own Maven artifact so this flags SDK
+  (`ai.shipeasy:shipeasy`) keeps **zero** new runtime deps — consumers opt in with
+  `ai.shipeasy:shipeasy-admin-java`. Mirrors the nested `admin` module pattern used
+  by sdk-go/python. Generated via `openapi-generator` (see `apps/mobile` →
+  `pnpm gen:clients java`).
 
 ## 0.10.0
 
