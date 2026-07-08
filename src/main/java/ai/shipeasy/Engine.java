@@ -21,10 +21,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Logger;
 
 public final class Engine implements AutoCloseable {
-    private static final Logger log = Logger.getLogger("shipeasy");
     private static final String DEFAULT_BASE_URL = "https://edge.shipeasy.dev";
     /**
      * CDN origin serving the static loader scripts ({@code /sdk/bootstrap.js},
@@ -34,7 +32,7 @@ public final class Engine implements AutoCloseable {
     private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
-    public static final String VERSION = "0.11.0";
+    public static final String VERSION = "0.12.0";
 
     private final String apiKey;
     private final String baseUrl;
@@ -59,6 +57,14 @@ public final class Engine implements AutoCloseable {
      * path too.
      */
     private final String env;
+
+    /**
+     * Verbosity of the SDK's own diagnostic logging (network/decode/listener
+     * failures, misuse warnings). Defaults to {@link LogLevel#WARN}. The resolved
+     * level is also mirrored into the static {@link Log} facade so the
+     * {@code See}/{@code Shipeasy} static log sites gate the same way.
+     */
+    private final LogLevel logLevel;
 
     /** Per-process spam guard for {@code see()} sends. */
     private final SeeLimiter seeLimiter = new SeeLimiter();
@@ -106,15 +112,32 @@ public final class Engine implements AutoCloseable {
      * @param disableTelemetry turn off per-evaluation usage beacons (ON by default)
      */
     public Engine(String apiKey, String baseUrl, String env, boolean disableTelemetry) {
-        this(apiKey, baseUrl, env, disableTelemetry, false);
+        this(apiKey, baseUrl, env, disableTelemetry, false, LogLevel.WARN);
+    }
+
+    /**
+     * As {@link #Engine(String, String, String, boolean)} but with an explicit
+     * SDK {@link LogLevel}. Package-private — used by {@link Shipeasy#configure}
+     * to thread {@link Shipeasy.Options#logLevel} through.
+     */
+    Engine(String apiKey, String baseUrl, String env, boolean disableTelemetry, LogLevel logLevel) {
+        this(apiKey, baseUrl, env, disableTelemetry, false, logLevel);
     }
 
     private Engine(String apiKey, String baseUrl, String env, boolean disableTelemetry, boolean localMode) {
+        this(apiKey, baseUrl, env, disableTelemetry, localMode, LogLevel.WARN);
+    }
+
+    private Engine(String apiKey, String baseUrl, String env, boolean disableTelemetry, boolean localMode, LogLevel logLevel) {
         this.apiKey = apiKey;
         this.baseUrl = baseUrl == null ? DEFAULT_BASE_URL : baseUrl.replaceAll("/$", "");
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
         this.localMode = localMode;
         this.env = env;
+        this.logLevel = logLevel == null ? LogLevel.WARN : logLevel;
+        // Store the resolved level statically so the See/Shipeasy static log
+        // sites gate too (last constructed engine wins).
+        Log.setLevel(this.logLevel);
         this.privateAttributes = List.of();
         // localMode forces telemetry off regardless of the flag.
         this.telemetry = new Telemetry(
@@ -262,9 +285,22 @@ public final class Engine implements AutoCloseable {
      * the {@code OFF} vs {@code DEFAULT} distinction is computed here at the
      * boundary by reading the same {@code enabled}/{@code killswitch} fields
      * {@code evalGate} reads.
+     *
+     * <p><b>Fail-safe:</b> a runtime read never throws into the caller — any
+     * unexpected error is caught, logged at error level, and a safe
+     * {@link FlagDetail#CLIENT_NOT_READY} ({@code value=false}) is returned.
      */
-    @SuppressWarnings("unchecked")
     public FlagDetail getFlagDetail(String name, Map<String, Object> user) {
+        try {
+            return getFlagDetailImpl(name, user);
+        } catch (Throwable t) {
+            Log.error("getFlagDetail threw: " + t);
+            return new FlagDetail(false, FlagDetail.CLIENT_NOT_READY);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private FlagDetail getFlagDetailImpl(String name, Map<String, Object> user) {
         Boolean override = flagOverrides.get(name);
         if (override != null) return new FlagDetail(override, FlagDetail.OVERRIDE);
 
@@ -318,8 +354,21 @@ public final class Engine implements AutoCloseable {
         return copy;
     }
 
-    @SuppressWarnings("unchecked")
+    /**
+     * <b>Fail-safe:</b> never throws into the caller — an unexpected error is
+     * caught, logged at error level, and {@code null} is returned.
+     */
     public Object getConfig(String name) {
+        try {
+            return getConfigImpl(name);
+        } catch (Throwable t) {
+            Log.error("getConfig threw: " + t);
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object getConfigImpl(String name) {
         Object override = configOverrides.get(name);
         if (override != null) return override;
         telemetry.emit("config", name);
@@ -334,10 +383,16 @@ public final class Engine implements AutoCloseable {
     /**
      * As {@link #getConfig(String)} but returns {@code defaultValue} when the
      * config key is absent (no override and not present in the blob).
+     * <b>Fail-safe:</b> never throws — falls back to {@code defaultValue}.
      */
     public Object getConfig(String name, Object defaultValue) {
-        Object value = getConfig(name);
-        return value == null ? defaultValue : value;
+        try {
+            Object value = getConfig(name);
+            return value == null ? defaultValue : value;
+        } catch (Throwable t) {
+            Log.error("getConfig(default) threw: " + t);
+            return defaultValue;
+        }
     }
 
     /**
@@ -351,9 +406,22 @@ public final class Engine implements AutoCloseable {
         return getKillswitch(name, null);
     }
 
-    /** @see #getKillswitch(String) */
-    @SuppressWarnings("unchecked")
+    /**
+     * @see #getKillswitch(String)
+     * <b>Fail-safe:</b> never throws — an unexpected error is logged at error
+     * level and {@code false} is returned.
+     */
     public boolean getKillswitch(String name, String switchKey) {
+        try {
+            return getKillswitchImpl(name, switchKey);
+        } catch (Throwable t) {
+            Log.error("getKillswitch threw: " + t);
+            return false;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean getKillswitchImpl(String name, String switchKey) {
         telemetry.emit("ks", name);
         Map<String, Object> blob = flagsBlob;
         if (blob == null) return false;
@@ -389,13 +457,27 @@ public final class Engine implements AutoCloseable {
             try {
                 l.run();
             } catch (Exception e) {
-                log.warning("onChange listener threw: " + e.getMessage());
+                Log.warn("onChange listener threw: " + e.getMessage());
             }
         }
     }
 
-    @SuppressWarnings("unchecked")
+    /**
+     * <b>Fail-safe:</b> never throws into the caller — an unexpected error is
+     * caught, logged at error level, and a not-enrolled {@link ExperimentResult}
+     * ({@code group="control"}, {@code params=defaultParams}) is returned.
+     */
     public ExperimentResult getExperiment(String name, Map<String, Object> user, Object defaultParams) {
+        try {
+            return getExperimentImpl(name, user, defaultParams);
+        } catch (Throwable t) {
+            Log.error("getExperiment threw: " + t);
+            return new ExperimentResult(false, "control", defaultParams);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private ExperimentResult getExperimentImpl(String name, Map<String, Object> user, Object defaultParams) {
         ExperimentResult override = experimentOverrides.get(name);
         if (override != null) return override;
         telemetry.emit("experiment", name);
@@ -583,20 +665,28 @@ public final class Engine implements AutoCloseable {
         return out;
     }
 
+    /**
+     * <b>Fail-safe:</b> fire-and-forget and never throws into the caller — any
+     * error building or scheduling the send is caught and logged.
+     */
     public void track(String userId, String eventName, Map<String, Object> properties) {
-        if (localMode) return;
-        Map<String, Object> safeProps = stripPrivate(properties);
-        Map<String, Object> event = new HashMap<>();
-        event.put("type", "metric");
-        event.put("event_name", eventName);
-        event.put("user_id", userId);
-        event.put("ts", Instant.now().toEpochMilli());
-        if (safeProps != null && !safeProps.isEmpty()) event.put("properties", safeProps);
-        Map<String, Object> body = Map.of("events", List.of(event));
-        scheduler.execute(() -> {
-            try { post("/collect", mapper.writeValueAsBytes(body)); }
-            catch (Exception e) { log.warning("track failed: " + e.getMessage()); }
-        });
+        try {
+            if (localMode) return;
+            Map<String, Object> safeProps = stripPrivate(properties);
+            Map<String, Object> event = new HashMap<>();
+            event.put("type", "metric");
+            event.put("event_name", eventName);
+            event.put("user_id", userId);
+            event.put("ts", Instant.now().toEpochMilli());
+            if (safeProps != null && !safeProps.isEmpty()) event.put("properties", safeProps);
+            Map<String, Object> body = Map.of("events", List.of(event));
+            scheduler.execute(() -> {
+                try { post("/collect", mapper.writeValueAsBytes(body)); }
+                catch (Exception e) { Log.warn("track failed: " + e.getMessage()); }
+            });
+        } catch (Throwable t) {
+            Log.error("track threw: " + t);
+        }
     }
 
     // ---- see() structured error reporting ----
@@ -645,10 +735,10 @@ public final class Engine implements AutoCloseable {
             Map<String, Object> body = Map.of("events", List.of(ev));
             scheduler.execute(() -> {
                 try { post("/collect", mapper.writeValueAsBytes(body)); }
-                catch (Exception e) { log.warning("see() send failed: " + e.getMessage()); }
+                catch (Exception e) { Log.warn("see() send failed: " + e.getMessage()); }
             });
         } catch (Exception e) {
-            log.warning("see() dispatch failed: " + e.getMessage());
+            Log.warn("see() dispatch failed: " + e.getMessage());
         }
     }
 
@@ -673,24 +763,28 @@ public final class Engine implements AutoCloseable {
      * when the user isn't enrolled.
      */
     public void logExposure(Map<String, Object> user, String experimentName) {
-        if (localMode) return;
-        Map<String, Object> u = user == null ? Map.of() : user;
-        ExperimentResult r = getExperiment(experimentName, u, null);
-        if (!r.inExperiment) return;
-        Map<String, Object> event = new HashMap<>();
-        event.put("type", "exposure");
-        event.put("experiment", experimentName);
-        event.put("group", r.group);
-        Object uid = u.get("user_id");
-        if (uid != null) event.put("user_id", uid);
-        Object anon = u.get("anonymous_id");
-        if (anon != null) event.put("anonymous_id", anon);
-        event.put("ts", Instant.now().toEpochMilli());
-        Map<String, Object> body = Map.of("events", List.of(event));
-        scheduler.execute(() -> {
-            try { post("/collect", mapper.writeValueAsBytes(body)); }
-            catch (Exception e) { log.warning("logExposure failed: " + e.getMessage()); }
-        });
+        try {
+            if (localMode) return;
+            Map<String, Object> u = user == null ? Map.of() : user;
+            ExperimentResult r = getExperiment(experimentName, u, null);
+            if (!r.inExperiment) return;
+            Map<String, Object> event = new HashMap<>();
+            event.put("type", "exposure");
+            event.put("experiment", experimentName);
+            event.put("group", r.group);
+            Object uid = u.get("user_id");
+            if (uid != null) event.put("user_id", uid);
+            Object anon = u.get("anonymous_id");
+            if (anon != null) event.put("anonymous_id", anon);
+            event.put("ts", Instant.now().toEpochMilli());
+            Map<String, Object> body = Map.of("events", List.of(event));
+            scheduler.execute(() -> {
+                try { post("/collect", mapper.writeValueAsBytes(body)); }
+                catch (Exception e) { Log.warn("logExposure failed: " + e.getMessage()); }
+            });
+        } catch (Throwable t) {
+            Log.error("logExposure threw: " + t);
+        }
     }
 
     private void scheduleNext() {
@@ -699,7 +793,7 @@ public final class Engine implements AutoCloseable {
                 boolean changed = fetchAll();
                 if (changed) fireChangeListeners();
             }
-            catch (Exception e) { log.warning("background poll failed: " + e.getMessage()); }
+            catch (Exception e) { Log.warn("background poll failed: " + e.getMessage()); }
             finally { scheduleNext(); }
         }, pollIntervalSec, TimeUnit.SECONDS);
     }

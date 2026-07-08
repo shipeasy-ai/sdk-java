@@ -5,7 +5,6 @@ import java.io.StringWriter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Logger;
 
 /**
  * {@code see()} — <em>shipeasy error</em>. Structured error reporting for the
@@ -40,7 +39,6 @@ import java.util.logging.Logger;
  * a warning and returns a no-op chain — it never throws.
  */
 public final class See {
-    private static final Logger log = Logger.getLogger("shipeasy");
 
     // ---- Limits (mirror core.ts; kept in sync with the worker's /collect) ----
     static final int SEE_MAX_MESSAGE = 500;
@@ -81,7 +79,7 @@ public final class See {
     public static SeeChain see(Object problem) {
         Engine c = resolveDefault();
         if (c == null) {
-            log.warning("see() called before an engine was created — error dropped");
+            Log.warn("see() called before an engine was created — error dropped");
             return SeeChain.noop(problem);
         }
         return c.see(problem);
@@ -91,7 +89,7 @@ public final class See {
     public static SeeChain violation(String name) {
         Engine c = resolveDefault();
         if (c == null) {
-            log.warning("seeViolation() called before an engine was created — error dropped");
+            Log.warn("seeViolation() called before an engine was created — error dropped");
             return SeeChain.noop(new Violation(name));
         }
         return c.seeViolation(name);

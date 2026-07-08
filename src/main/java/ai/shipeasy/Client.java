@@ -61,59 +61,109 @@ public final class Client {
         return attributes;
     }
 
-    /** Evaluate gate {@code name} for the bound user. */
+    // ---- Fail-safe runtime reads ----
+    //
+    // Every read below routes through the engine's own fail-safe read methods.
+    // The extra try/catch here is belt-and-suspenders: a read on the bound
+    // Client MUST NEVER throw into the caller, so any unexpected error (e.g. a
+    // corrupt bound attribute map) is caught, logged at error level via the
+    // leveled logger, and the documented safe default is returned.
+
+    /** Evaluate gate {@code name} for the bound user. Never throws → default {@code false}. */
     public boolean getFlag(String name) {
-        return engine.getFlag(name, attributes);
+        try {
+            return engine.getFlag(name, attributes);
+        } catch (Throwable t) {
+            Log.error("Client.getFlag threw: " + t);
+            return false;
+        }
     }
 
     /**
      * Evaluate gate {@code name} for the bound user, returning {@code defaultValue}
      * only when the flag <em>cannot</em> be evaluated (engine not ready or the
-     * flag is absent) — never when it evaluates to {@code false}.
+     * flag is absent) — never when it evaluates to {@code false}. Never throws →
+     * {@code defaultValue}.
      */
     public boolean getFlag(String name, boolean defaultValue) {
-        return engine.getFlag(name, attributes, defaultValue);
+        try {
+            return engine.getFlag(name, attributes, defaultValue);
+        } catch (Throwable t) {
+            Log.error("Client.getFlag(default) threw: " + t);
+            return defaultValue;
+        }
     }
 
-    /** Evaluate gate {@code name} for the bound user, returning value + reason. */
+    /** Evaluate gate {@code name} for the bound user, returning value + reason. Never throws. */
     public FlagDetail getFlagDetail(String name) {
-        return engine.getFlagDetail(name, attributes);
+        try {
+            return engine.getFlagDetail(name, attributes);
+        } catch (Throwable t) {
+            Log.error("Client.getFlagDetail threw: " + t);
+            return new FlagDetail(false, FlagDetail.CLIENT_NOT_READY);
+        }
     }
 
-    /** Resolve dynamic config {@code name} (configs are not user-scoped). */
+    /** Resolve dynamic config {@code name} (configs are not user-scoped). Never throws → {@code null}. */
     public Object getConfig(String name) {
-        return engine.getConfig(name);
+        try {
+            return engine.getConfig(name);
+        } catch (Throwable t) {
+            Log.error("Client.getConfig threw: " + t);
+            return null;
+        }
     }
 
-    /** Resolve dynamic config {@code name}, or {@code defaultValue} when absent. */
+    /** Resolve dynamic config {@code name}, or {@code defaultValue} when absent. Never throws → {@code defaultValue}. */
     public Object getConfig(String name, Object defaultValue) {
-        return engine.getConfig(name, defaultValue);
+        try {
+            return engine.getConfig(name, defaultValue);
+        } catch (Throwable t) {
+            Log.error("Client.getConfig(default) threw: " + t);
+            return defaultValue;
+        }
     }
 
     /**
      * Evaluate experiment {@code name} for the bound user, filling in
      * {@code defaultParams} when the user is not enrolled / has no params.
+     * Never throws → not-enrolled {@code control}/{@code defaultParams}.
      */
     public ExperimentResult getExperiment(String name, Object defaultParams) {
-        return engine.getExperiment(name, attributes, defaultParams);
+        try {
+            return engine.getExperiment(name, attributes, defaultParams);
+        } catch (Throwable t) {
+            Log.error("Client.getExperiment threw: " + t);
+            return new ExperimentResult(false, "control", defaultParams);
+        }
     }
 
     /**
      * Read killswitch {@code name} — {@code true} when the whole killswitch is
      * killed. (Killswitches are not user-scoped; the bound user is irrelevant,
-     * but it is exposed here for one-stop ergonomics.)
+     * but it is exposed here for one-stop ergonomics.) Never throws → {@code false}.
      */
     public boolean getKillswitch(String name) {
-        return engine.getKillswitch(name);
+        try {
+            return engine.getKillswitch(name);
+        } catch (Throwable t) {
+            Log.error("Client.getKillswitch threw: " + t);
+            return false;
+        }
     }
 
     /**
      * Read killswitch {@code name}'s named per-key switch {@code switchKey} —
      * {@code true} when that switch is on. A {@code null} {@code switchKey}
-     * reads the whole-killswitch killed state.
+     * reads the whole-killswitch killed state. Never throws → {@code false}.
      */
     public boolean getKillswitch(String name, String switchKey) {
-        return engine.getKillswitch(name, switchKey);
+        try {
+            return engine.getKillswitch(name, switchKey);
+        } catch (Throwable t) {
+            Log.error("Client.getKillswitch threw: " + t);
+            return false;
+        }
     }
 
     /**
@@ -133,7 +183,11 @@ public final class Client {
      * {@link Engine#track(String, String, Map)}.
      */
     public void track(String eventName, Map<String, Object> properties) {
-        engine.track(unitId(), eventName, properties);
+        try {
+            engine.track(unitId(), eventName, properties);
+        } catch (Throwable t) {
+            Log.error("Client.track threw: " + t);
+        }
     }
 
     /**
@@ -144,7 +198,11 @@ public final class Client {
      * {@link Engine#logExposure(Map, String)}.
      */
     public void logExposure(String experimentName) {
-        engine.logExposure(attributes, experimentName);
+        try {
+            engine.logExposure(attributes, experimentName);
+        } catch (Throwable t) {
+            Log.error("Client.logExposure threw: " + t);
+        }
     }
 
     /** Derive the unit id from the bound attributes: {@code user_id} else {@code anonymous_id}. */

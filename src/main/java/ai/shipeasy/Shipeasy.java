@@ -2,7 +2,6 @@ package ai.shipeasy;
 
 import java.util.Map;
 import java.util.function.Function;
-import java.util.logging.Logger;
 
 /**
  * Process-wide entry point for the Shipeasy server SDK — the one-time
@@ -41,7 +40,6 @@ import java.util.logging.Logger;
  * on it to also start the background poll.
  */
 public final class Shipeasy {
-    private static final Logger log = Logger.getLogger("shipeasy");
 
     /** Identity transform: the user object IS already the attribute map. */
     @SuppressWarnings("unchecked")
@@ -67,10 +65,24 @@ public final class Shipeasy {
         boolean poll;
         java.util.List<String> privateAttributes = java.util.List.of();
         StickyBucketStore stickyStore;
+        LogLevel logLevel = LogLevel.WARN;
         Function<Object, Map<String, Object>> attributes = IDENTITY;
 
         private Options(String apiKey) {
             this.apiKey = apiKey;
+        }
+
+        /**
+         * Verbosity of the SDK's own diagnostic logging (network/decode/listener
+         * failures, misuse warnings). Ordered
+         * {@code SILENT < ERROR < WARN < INFO < DEBUG}; default {@link LogLevel#WARN}.
+         * {@code null} resolves to {@link LogLevel#WARN}. This gates only the SDK's
+         * internal diagnostics — the runtime read/track/see paths never throw and
+         * fail safe regardless of level.
+         */
+        public Options logLevel(LogLevel logLevel) {
+            this.logLevel = logLevel == null ? LogLevel.WARN : logLevel;
+            return this;
         }
 
         /**
@@ -151,7 +163,7 @@ public final class Shipeasy {
         if (existing != null) return existing;
         synchronized (LOCK) {
             if (engine != null) return engine;
-            Engine e = new Engine(opts.apiKey, opts.baseUrl, opts.env, opts.disableTelemetry);
+            Engine e = new Engine(opts.apiKey, opts.baseUrl, opts.env, opts.disableTelemetry, opts.logLevel);
             e.privateAttributes(opts.privateAttributes).stickyStore(opts.stickyStore);
             attributes = opts.attributes;
             engine = e;
@@ -167,7 +179,7 @@ public final class Shipeasy {
                         e.initOnce();
                     }
                 } catch (Exception ex) {
-                    log.warning("Shipeasy.configure initial fetch failed: " + ex.getMessage());
+                    Log.warn("Shipeasy.configure initial fetch failed: " + ex.getMessage());
                 }
             }, "shipeasy-configure-init");
             t.setDaemon(true);

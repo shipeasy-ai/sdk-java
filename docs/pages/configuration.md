@@ -60,6 +60,7 @@ them to `Shipeasy.configure(...)`:
 | `.poll(boolean)` | `false` | Start the background poll instead of a one-shot fetch. |
 | `.privateAttributes(List)` | empty | Targeting-only keys stripped from outbound events. See [Advanced](advanced.md). |
 | `.stickyStore(StickyBucketStore)` | none | Pluggable sticky-bucketing store. See [Advanced](advanced.md). |
+| `.logLevel(LogLevel)` | `WARN` | Verbosity of the SDK's own diagnostics. See below. |
 | `.attributes(Function)` | identity | Map your user object to the attribute map. |
 
 ```java
@@ -83,6 +84,34 @@ Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
 
 To react when a poll applies new data, register a change listener with
 `Shipeasy.onChange(...)` — see [Advanced](advanced.md).
+
+## Fail-safe reads & the `logLevel` option
+
+Runtime reads never throw into your code. `getFlag` / `getFlagDetail` /
+`getConfig` / `getExperiment` / `getKillswitch` — and `track` / `logExposure` /
+`see()` — always return a safe default on any unexpected error rather than
+propagate it: `getFlag` → your default (or `false`), `getConfig` → your default
+(or `null`), `getExperiment` → a not-enrolled `control` result with your
+`defaultParams`, `getKillswitch` → `false`. A flag read can never take down a
+request path.
+
+Setup and lifecycle calls still throw loudly, because they signal
+misconfiguration you want to catch at boot: `new Client(user)` before
+`configure(...)`, `configureForOffline(...)`, and `new ShipeasyProvider()`.
+
+When a read swallows an error it logs a diagnostic. Control that verbosity with
+`.logLevel(LogLevel)` — ordered `SILENT < ERROR < WARN < INFO < DEBUG`, default
+`WARN`. A message at level `L` is emitted only when the configured level is at
+least `L`; `LogLevel.SILENT` mutes the SDK entirely. This gates only the SDK's
+own diagnostics — never what your application logs.
+
+```java
+import ai.shipeasy.LogLevel;
+import ai.shipeasy.Shipeasy;
+
+Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+    .logLevel(LogLevel.SILENT));   // quiet the SDK's internal diagnostics
+```
 
 ## Environment variables
 

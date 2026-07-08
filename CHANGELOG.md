@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.12.0 — 2026-07-07
+
+Fail-safe reads and a leveled `logLevel` option (uniform SDK contract, mirrors
+`@shipeasy/sdk`).
+
+### Added
+
+- **`ai.shipeasy.LogLevel`** — a public enum `SILENT < ERROR < WARN < INFO < DEBUG`
+  gating the SDK's own diagnostics. Set it with
+  `Shipeasy.configure(Shipeasy.options(key).logLevel(LogLevel.INFO))`. Default is
+  `WARN`; `null` resolves to `WARN`. The resolved level is mirrored into the
+  static logging facade so the `See`/`Shipeasy` package-level log sites gate too.
+
+### Changed
+
+- **Runtime reads never throw into the caller.** `getFlag` / `getFlagDetail` /
+  `getConfig` / `getExperiment` / `getKillswitch` (and the bound `Client`
+  equivalents), plus `track` / `logExposure` / `see()`, now wrap their body in a
+  defensive `try/catch(Throwable)`: any unexpected error is caught, logged at
+  `ERROR` level, and the documented safe default is returned (`getFlag`→default,
+  `getConfig`→default/null, `getExperiment`→not-enrolled control/defaultParams,
+  `getKillswitch`→false, `track`/`logExposure`→void). Boot-time misconfiguration
+  (`new Client(user)` before `configure`, `configureForOffline`,
+  `new ShipeasyProvider()`, `Engine.init()`) still throws loudly.
+- All internal diagnostic logging now routes through the leveled facade instead of
+  logging unconditionally at `WARNING`.
+
 ## 0.11.0
 
 Ship the generated OpenAPI **admin** client alongside the flags SDK.
