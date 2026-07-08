@@ -54,7 +54,7 @@ them to `Shipeasy.configure(...)`:
 
 | Method | Default | Meaning |
 | --- | --- | --- |
-| `.baseUrl(String)` | `https://edge.shipeasy.dev` | Override the edge API base URL. |
+| `.baseUrl(String)` | `https://api.shipeasy.ai` | Override the edge API base URL. |
 | `.env(String)` | `"prod"` | Deployment env tagged on usage telemetry and `see()` events. |
 | `.disableTelemetry(boolean)` | `false` | Turn off per-evaluation usage beacons. |
 | `.poll(boolean)` | `false` | Start the background poll instead of a one-shot fetch. |

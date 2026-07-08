@@ -108,7 +108,7 @@ public final class Shipeasy {
             return this;
         }
 
-        /** Override the edge base URL (default {@code https://edge.shipeasy.dev}). */
+        /** Override the edge base URL (default {@code https://api.shipeasy.ai}). */
         public Options baseUrl(String baseUrl) {
             this.baseUrl = baseUrl;
             return this;

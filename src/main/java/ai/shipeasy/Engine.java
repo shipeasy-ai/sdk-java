@@ -23,7 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public final class Engine implements AutoCloseable {
-    private static final String DEFAULT_BASE_URL = "https://edge.shipeasy.dev";
+    private static final String DEFAULT_BASE_URL = "https://api.shipeasy.ai";
     /**
      * CDN origin serving the static loader scripts ({@code /sdk/bootstrap.js},
      * {@code /sdk/i18n/loader.js}) — distinct from the edge API the blobs are
@@ -32,7 +32,7 @@ public final class Engine implements AutoCloseable {
     private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
-    public static final String VERSION = "0.12.0";
+    public static final String VERSION = "0.12.1";
 
     private final String apiKey;
     private final String baseUrl;
