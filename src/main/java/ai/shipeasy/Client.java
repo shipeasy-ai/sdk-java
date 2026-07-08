@@ -61,13 +61,21 @@ public final class Client {
         return attributes;
     }
 
-    // ---- Fail-safe runtime reads ----
+    // ---- Fail-safe runtime reads (last-resort internal guard) ----
     //
     // Every read below routes through the engine's own fail-safe read methods.
-    // The extra try/catch here is belt-and-suspenders: a read on the bound
-    // Client MUST NEVER throw into the caller, so any unexpected error (e.g. a
-    // corrupt bound attribute map) is caught, logged at error level via the
-    // leveled logger, and the documented safe default is returned.
+    // The extra try/catch here is belt-and-suspenders AND the SDK's last-resort
+    // internal guard: a read on the bound Client MUST NEVER throw into the caller,
+    // so any unexpected error (e.g. a corrupt bound attribute map, a violated
+    // internal invariant) is caught, logged at error level via the leveled
+    // logger, and the documented safe default is returned. This is the Java
+    // analog of the TS `safeRun(label, fallback, fn)` guard.
+    //
+    // A caught error here is by definition "on our end" — an internal SDK failure,
+    // not the caller's — so in addition to logging locally it is reported to
+    // Shipeasy's OWN project via {@link InternalReport} (fire-and-forget, never
+    // throws). The stable operation label doubles as the issue subject so
+    // occurrences of the same bug dedupe.
 
     /** Evaluate gate {@code name} for the bound user. Never throws → default {@code false}. */
     public boolean getFlag(String name) {
@@ -75,6 +83,7 @@ public final class Client {
             return engine.getFlag(name, attributes);
         } catch (Throwable t) {
             Log.error("Client.getFlag threw: " + t);
+            InternalReport.report("Client.getFlag", t);
             return false;
         }
     }
@@ -90,6 +99,7 @@ public final class Client {
             return engine.getFlag(name, attributes, defaultValue);
         } catch (Throwable t) {
             Log.error("Client.getFlag(default) threw: " + t);
+            InternalReport.report("Client.getFlag", t);
             return defaultValue;
         }
     }
@@ -100,6 +110,7 @@ public final class Client {
             return engine.getFlagDetail(name, attributes);
         } catch (Throwable t) {
             Log.error("Client.getFlagDetail threw: " + t);
+            InternalReport.report("Client.getFlagDetail", t);
             return new FlagDetail(false, FlagDetail.CLIENT_NOT_READY);
         }
     }
@@ -110,6 +121,7 @@ public final class Client {
             return engine.getConfig(name);
         } catch (Throwable t) {
             Log.error("Client.getConfig threw: " + t);
+            InternalReport.report("Client.getConfig", t);
             return null;
         }
     }
@@ -120,6 +132,7 @@ public final class Client {
             return engine.getConfig(name, defaultValue);
         } catch (Throwable t) {
             Log.error("Client.getConfig(default) threw: " + t);
+            InternalReport.report("Client.getConfig", t);
             return defaultValue;
         }
     }
@@ -134,6 +147,7 @@ public final class Client {
             return engine.getExperiment(name, attributes, defaultParams);
         } catch (Throwable t) {
             Log.error("Client.getExperiment threw: " + t);
+            InternalReport.report("Client.getExperiment", t);
             return new ExperimentResult(false, "control", defaultParams);
         }
     }
@@ -148,6 +162,7 @@ public final class Client {
             return engine.getKillswitch(name);
         } catch (Throwable t) {
             Log.error("Client.getKillswitch threw: " + t);
+            InternalReport.report("Client.getKillswitch", t);
             return false;
         }
     }
@@ -162,6 +177,7 @@ public final class Client {
             return engine.getKillswitch(name, switchKey);
         } catch (Throwable t) {
             Log.error("Client.getKillswitch threw: " + t);
+            InternalReport.report("Client.getKillswitch", t);
             return false;
         }
     }
@@ -187,6 +203,7 @@ public final class Client {
             engine.track(unitId(), eventName, properties);
         } catch (Throwable t) {
             Log.error("Client.track threw: " + t);
+            InternalReport.report("Client.track", t);
         }
     }
 
@@ -202,6 +219,7 @@ public final class Client {
             engine.logExposure(attributes, experimentName);
         } catch (Throwable t) {
             Log.error("Client.logExposure threw: " + t);
+            InternalReport.report("Client.logExposure", t);
         }
     }
 

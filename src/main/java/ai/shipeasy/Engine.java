@@ -32,7 +32,7 @@ public final class Engine implements AutoCloseable {
     private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
-    public static final String VERSION = "0.12.1";
+    public static final String VERSION = "0.13.0";
 
     private final String apiKey;
     private final String baseUrl;
@@ -146,6 +146,22 @@ public final class Engine implements AutoCloseable {
         // Register as the default engine backing the package-level See.see()
         // functions (last constructed wins — the analog of TS's shipeasy({key})).
         See.setDefaultEngine(this);
+        // Arm the internal self-monitoring channel (SDK-internal errors → Shipeasy's
+        // OWN project). Default ON; forced OFF in test/offline mode (no network).
+        // A later configure(...) with disableInternalErrorReporting(true) re-sets
+        // this OFF via setInternalErrorReporting.
+        InternalReport.setContext(VERSION, !localMode);
+    }
+
+    /**
+     * Opt out of (or back into) the internal self-monitoring channel that reports
+     * SDK-internal errors to Shipeasy's own project. Wired from
+     * {@link Shipeasy.Options#disableInternalErrorReporting}. Ignored (kept off)
+     * in test/offline mode, which never touches the network. Returns {@code this}.
+     */
+    Engine setInternalErrorReporting(boolean enabled) {
+        InternalReport.setContext(VERSION, enabled && !localMode);
+        return this;
     }
 
     /**

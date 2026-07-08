@@ -57,6 +57,7 @@ them to `Shipeasy.configure(...)`:
 | `.baseUrl(String)` | `https://api.shipeasy.ai` | Override the edge API base URL. |
 | `.env(String)` | `"prod"` | Deployment env tagged on usage telemetry and `see()` events. |
 | `.disableTelemetry(boolean)` | `false` | Turn off per-evaluation usage beacons. |
+| `.disableInternalErrorReporting(boolean)` | `false` | Turn off SDK self-monitoring (internal errors reported to Shipeasy's own project). See below. |
 | `.poll(boolean)` | `false` | Start the background poll instead of a one-shot fetch. |
 | `.privateAttributes(List)` | empty | Targeting-only keys stripped from outbound events. See [Advanced](advanced.md). |
 | `.stickyStore(StickyBucketStore)` | none | Pluggable sticky-bucketing store. See [Advanced](advanced.md). |
@@ -111,6 +112,25 @@ import ai.shipeasy.Shipeasy;
 
 Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
     .logLevel(LogLevel.SILENT));   // quiet the SDK's internal diagnostics
+```
+
+## SDK self-monitoring
+
+When a runtime read hits the `Client`'s last-resort guard and returns a safe
+default, that error is a bug on Shipeasy's side, not yours. In addition to
+logging it locally, the SDK reports it to **Shipeasy's own project** — a
+dedicated, baked-in destination, entirely separate from your `see()` reporting.
+These internal errors never land in your project or your Errors tab; they let the
+SDK team track and fix SDK bugs across every app the SDK runs in. The report is
+fire-and-forget (it can never slow down or break a read), deduped, and carries
+only the error plus a stable subject (the guarded operation, e.g.
+`Client.getFlag`). It is on by default and never sends in test/offline mode.
+
+Opt out with `.disableInternalErrorReporting(true)`:
+
+```java
+Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+    .disableInternalErrorReporting(true));
 ```
 
 ## Environment variables

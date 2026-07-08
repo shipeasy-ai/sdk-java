@@ -62,6 +62,7 @@ public final class Shipeasy {
         String baseUrl;
         String env = "prod";
         boolean disableTelemetry;
+        boolean disableInternalErrorReporting;
         boolean poll;
         java.util.List<String> privateAttributes = java.util.List.of();
         StickyBucketStore stickyStore;
@@ -127,6 +128,18 @@ public final class Shipeasy {
         }
 
         /**
+         * Turn off the internal self-monitoring channel that reports the SDK's OWN
+         * caught internal errors (a bug on our end, not yours) to Shipeasy's own
+         * project — never your dashboard. ON by default; test/offline mode never
+         * sends regardless. Opt out to suppress this SDK-internal telemetry
+         * entirely.
+         */
+        public Options disableInternalErrorReporting(boolean disableInternalErrorReporting) {
+            this.disableInternalErrorReporting = disableInternalErrorReporting;
+            return this;
+        }
+
+        /**
          * Transform from your own user object (any shape) to the Shipeasy
          * attribute map ({@code {"user_id": ..., "anonymous_id": ..., <attrs>}}).
          * Runs once, in the {@link Client} constructor. Default = identity (the
@@ -165,6 +178,7 @@ public final class Shipeasy {
             if (engine != null) return engine;
             Engine e = new Engine(opts.apiKey, opts.baseUrl, opts.env, opts.disableTelemetry, opts.logLevel);
             e.privateAttributes(opts.privateAttributes).stickyStore(opts.stickyStore);
+            e.setInternalErrorReporting(!opts.disableInternalErrorReporting);
             attributes = opts.attributes;
             engine = e;
             // Fetch lifecycle owned by configure (the docs never tell a user to
