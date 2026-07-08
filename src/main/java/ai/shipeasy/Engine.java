@@ -32,7 +32,7 @@ public final class Engine implements AutoCloseable {
     private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
-    public static final String VERSION = "0.14.0";
+    public static final String VERSION = "0.15.0";
 
     private final String apiKey;
     private final String baseUrl;
@@ -78,6 +78,18 @@ public final class Engine implements AutoCloseable {
     private final boolean localMode;
 
     /**
+     * The master network switch, resolved from {@code isNetworkEnabled} (explicit
+     * value wins) else the environment-derived default (ON in production, OFF
+     * everywhere else — see {@link Env#isProductionEnv}). {@code localMode} always
+     * forces this off. When {@code true} the SDK performs zero network I/O exactly
+     * like {@code localMode}: {@link #init()}/{@link #initOnce()}/{@link #track}/
+     * {@code see()}/exposure are no-ops, telemetry is off, and evaluation reads the
+     * {@code override*} maps and any seeded blob only. It is the convenience inverse
+     * of "network enabled" that every egress gate keys on.
+     */
+    private final boolean offline;
+
+    /**
      * Attribute names usable for targeting but never persisted in analytics
      * (LD/Statsig {@code privateAttributes}). The server evaluates locally, so
      * private attrs never leave for evaluation at all; the only egress is
@@ -115,10 +127,13 @@ public final class Engine implements AutoCloseable {
 
     /**
      * @param env              published env reported in usage telemetry ("prod" default)
-     * @param disableTelemetry turn off per-evaluation usage beacons (ON by default)
+     * @param disableTelemetry turn off per-evaluation usage beacons. {@code true}
+     *                         forces telemetry off; {@code false} defers to the
+     *                         environment-derived default (ON in production, OFF
+     *                         elsewhere — see {@link Env#isProductionEnv}).
      */
     public Engine(String apiKey, String baseUrl, String env, boolean disableTelemetry) {
-        this(apiKey, baseUrl, env, disableTelemetry, false, LogLevel.WARN);
+        this(apiKey, baseUrl, env, disableTelemetry ? Boolean.FALSE : null, null, false, LogLevel.WARN);
     }
 
     /**
@@ -127,14 +142,27 @@ public final class Engine implements AutoCloseable {
      * to thread {@link Shipeasy.Options#logLevel} through.
      */
     Engine(String apiKey, String baseUrl, String env, boolean disableTelemetry, LogLevel logLevel) {
-        this(apiKey, baseUrl, env, disableTelemetry, false, logLevel);
+        this(apiKey, baseUrl, env, disableTelemetry ? Boolean.FALSE : null, null, false, logLevel);
     }
 
-    private Engine(String apiKey, String baseUrl, String env, boolean disableTelemetry, boolean localMode) {
-        this(apiKey, baseUrl, env, disableTelemetry, localMode, LogLevel.WARN);
+    /**
+     * Full package-private constructor with the environment-derived egress knobs.
+     * {@code isTrackingEnabled} and {@code isNetworkEnabled} are {@link Boolean}
+     * objects so {@code null} means "unset ⇒ use the env-derived default"; a
+     * non-null value always wins. Used by {@link Shipeasy#configure} to thread
+     * {@link Shipeasy.Options#isTrackingEnabled}/{@code isNetworkEnabled} through.
+     *
+     * @param isTrackingEnabled per-evaluation usage telemetry; {@code null} ⇒ prod-on
+     * @param isNetworkEnabled  master egress switch; {@code null} ⇒ prod-on
+     */
+    Engine(String apiKey, String baseUrl, String env,
+           Boolean isTrackingEnabled, Boolean isNetworkEnabled, LogLevel logLevel) {
+        this(apiKey, baseUrl, env, isTrackingEnabled, isNetworkEnabled, false, logLevel);
     }
 
-    private Engine(String apiKey, String baseUrl, String env, boolean disableTelemetry, boolean localMode, LogLevel logLevel) {
+    private Engine(String apiKey, String baseUrl, String env,
+                   Boolean isTrackingEnabled, Boolean isNetworkEnabled,
+                   boolean localMode, LogLevel logLevel) {
         this.apiKey = apiKey;
         this.baseUrl = baseUrl == null ? DEFAULT_BASE_URL : baseUrl.replaceAll("/$", "");
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
@@ -145,18 +173,33 @@ public final class Engine implements AutoCloseable {
         // sites gate too (last constructed engine wins).
         Log.setLevel(this.logLevel);
         this.privateAttributes = List.of();
-        // localMode forces telemetry off regardless of the flag.
+
+        // Environment-derived egress defaults. In production both switches default
+        // ON; outside production both default OFF, so an app that embeds the SDK
+        // never phones home from a dev machine or CI unless it opts in. An explicit
+        // isNetworkEnabled/isTrackingEnabled always wins; localMode forces both off.
+        boolean prod = Env.isProductionEnv(env);
+        boolean networkEnabled = !localMode && (isNetworkEnabled != null ? isNetworkEnabled : prod);
+        this.offline = !networkEnabled;
+        // Telemetry: an explicit value wins, else default to prod-on; the master
+        // network switch (offline) forces it off regardless (it IS network egress).
+        boolean trackingEnabled = networkEnabled && (isTrackingEnabled != null ? isTrackingEnabled : prod);
+
         this.telemetry = new Telemetry(
-            Telemetry.DEFAULT_TELEMETRY_URL, apiKey, "server", env, disableTelemetry || localMode, this.http);
-        if (localMode) this.initialized = true;
+            Telemetry.DEFAULT_TELEMETRY_URL, apiKey, "server", env, !trackingEnabled, this.http);
+        // Both localMode and the offline (network-off) default make init a no-op,
+        // so mark initialized so reads resolve from overrides / seeded blob / code
+        // defaults instead of blocking on CLIENT_NOT_READY forever.
+        if (localMode || this.offline) this.initialized = true;
         // Register as the default engine backing the package-level See.see()
         // functions (last constructed wins — the analog of TS's shipeasy({key})).
         See.setDefaultEngine(this);
         // Arm the internal self-monitoring channel (SDK-internal errors → Shipeasy's
-        // OWN project). Default ON; forced OFF in test/offline mode (no network).
+        // OWN project). Default ON; forced OFF whenever the SDK is offline (test/
+        // offline mode OR the env-derived network-off default — no network at all).
         // A later configure(...) with disableInternalErrorReporting(true) re-sets
         // this OFF via setInternalErrorReporting.
-        InternalReport.setContext(VERSION, !localMode);
+        InternalReport.setContext(VERSION, !this.offline);
     }
 
     /**
@@ -166,8 +209,13 @@ public final class Engine implements AutoCloseable {
      * in test/offline mode, which never touches the network. Returns {@code this}.
      */
     Engine setInternalErrorReporting(boolean enabled) {
-        InternalReport.setContext(VERSION, enabled && !localMode);
+        InternalReport.setContext(VERSION, enabled && !offline);
         return this;
+    }
+
+    /** A no-network (local/test-mode) engine: telemetry off, egress fully offline. */
+    private static Engine newLocalMode() {
+        return new Engine(null, null, "test", Boolean.FALSE, Boolean.FALSE, true, LogLevel.WARN);
     }
 
     /**
@@ -184,7 +232,7 @@ public final class Engine implements AutoCloseable {
      * }</pre>
      */
     public static Engine forTesting() {
-        return new Engine(null, null, "test", true, true);
+        return newLocalMode();
     }
 
     /**
@@ -202,7 +250,7 @@ public final class Engine implements AutoCloseable {
      * }</pre>
      */
     public static Engine fromFile(String path) throws IOException {
-        Engine c = new Engine(null, null, "test", true, true);
+        Engine c = newLocalMode();
         Map<String, Object> root = c.mapper.readValue(Files.readAllBytes(Path.of(path)), Map.class);
         c.loadSnapshot(root.get("flags"), root.get("experiments"));
         return c;
@@ -216,7 +264,7 @@ public final class Engine implements AutoCloseable {
      * {@code null}. Same no-network semantics as {@link #fromFile(String)}.
      */
     public static Engine fromSnapshot(Map<String, Object> flags, Map<String, Object> experiments) {
-        Engine c = new Engine(null, null, "test", true, true);
+        Engine c = newLocalMode();
         c.loadSnapshot(flags, experiments);
         return c;
     }
@@ -280,14 +328,14 @@ public final class Engine implements AutoCloseable {
     }
 
     public void init() throws IOException, InterruptedException {
-        if (localMode) return;
+        if (offline) return;
         fetchAll();
         initialized = true;
         scheduleNext();
     }
 
     public void initOnce() throws IOException, InterruptedException {
-        if (localMode) return;
+        if (offline) return;
         if (initialized) return;
         fetchAll();
         initialized = true;
@@ -781,7 +829,7 @@ public final class Engine implements AutoCloseable {
      */
     public void track(String userId, String eventName, Map<String, Object> properties) {
         try {
-            if (localMode) return;
+            if (offline) return;
             Map<String, Object> safeProps = stripPrivate(properties);
             Map<String, Object> event = new HashMap<>();
             event.put("type", "metric");
@@ -830,7 +878,7 @@ public final class Engine implements AutoCloseable {
 
     /** Build the wire event for a finalized chain and fire-and-forget the send. */
     private void dispatchSee(SeeChain chain) {
-        if (localMode) return;
+        if (offline) return;
         try {
             Map<String, Object> extras = stripPrivate(chain.extras());
             Map<String, Object> ev = See.buildSeeEvent(
@@ -861,7 +909,7 @@ public final class Engine implements AutoCloseable {
      */
     private void postExposure(Map<String, Object> user, String experiment, String group) {
         try {
-            if (localMode) return;
+            if (offline) return;
             Object uid = user.get("user_id");
             Object anon = user.get("anonymous_id");
             String unit = uid != null ? uid.toString() : (anon != null ? anon.toString() : "");

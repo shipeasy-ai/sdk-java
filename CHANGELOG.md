@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.15.0 — 2026-07-08
+
+### Environment-derived network & telemetry (egress) defaults
+
+The SDK is now **quiet by default outside production**. Two egress switches were
+added, and both default **ON in production and OFF in every other environment**, so
+an app that embeds the SDK never phones home from a dev machine or CI unless it
+opts in.
+
+- **`Shipeasy.options(key).isNetworkEnabled(boolean)`** — the master switch. When
+  `false` the SDK is fully offline: rule fetch, `track`, exposure logging, `see()`
+  reports **and** telemetry are all suppressed; reads resolve from overrides /
+  seeded state / in-code defaults.
+- **`Shipeasy.options(key).isTrackingEnabled(boolean)`** — per-evaluation usage
+  telemetry only. Forced off whenever the network is disabled.
+  `.disableTelemetry(boolean)` is now the back-compat inverse alias.
+
+"Production" is resolved (new `isProductionEnv` helper) with this precedence:
+
+1. A native runtime signal, in order — the `shipeasy.env` **system property**
+   (`-Dshipeasy.env=...`), then env vars `SHIPEASY_ENV`, `APP_ENV`, `ENV`. Value
+   `production`/`prod` (case-insensitive) ⇒ production; any other present value ⇒
+   not production.
+2. Otherwise the SDK's own `.env(...)` option (defaults to `"prod"`), so a real
+   production deploy stays online by default while `.env("dev")` stays quiet.
+
+An explicitly-passed `.isNetworkEnabled(...)` / `.isTrackingEnabled(...)` always
+wins over the environment-derived default.
+
+**BEHAVIOUR CHANGE.** Builds before 0.15.0 sent from every environment
+unconditionally. To restore the old always-on behaviour on a non-production
+deploy, set `SHIPEASY_ENV=production` (or pass `-Dshipeasy.env=production`), or
+pass `.isNetworkEnabled(true)`.
+
 ## 0.14.0 — 2026-07-08
 
 ### BREAKING — experiments are now read by universe, not by name

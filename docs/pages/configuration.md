@@ -55,8 +55,10 @@ them to `Shipeasy.configure(...)`:
 | Method | Default | Meaning |
 | --- | --- | --- |
 | `.baseUrl(String)` | `https://api.shipeasy.ai` | Override the edge API base URL. |
-| `.env(String)` | `"prod"` | Deployment env tagged on usage telemetry and `see()` events. |
-| `.disableTelemetry(boolean)` | `false` | Turn off per-evaluation usage beacons. |
+| `.env(String)` | `"prod"` | Deployment env tagged on usage telemetry and `see()` events. Also the fallback signal for the egress defaults below. |
+| `.isNetworkEnabled(boolean)` | env-derived (see below) | Master egress switch. `false` = fully offline (no fetch/track/exposure/`see()`/telemetry). |
+| `.isTrackingEnabled(boolean)` | env-derived (see below) | Per-evaluation usage telemetry. Forced off when the network is disabled. |
+| `.disableTelemetry(boolean)` | env-derived (see below) | Back-compat alias for `isTrackingEnabled(!x)`. |
 | `.disableInternalErrorReporting(boolean)` | `false` | Turn off SDK self-monitoring (internal errors reported to Shipeasy's own project). See below. |
 | `.poll(boolean)` | `false` | Start the background poll instead of a one-shot fetch. |
 | `.privateAttributes(List)` | empty | Targeting-only keys stripped from outbound events. See [Advanced](advanced.md). |
@@ -85,6 +87,50 @@ Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
 
 To react when a poll applies new data, register a change listener with
 `Shipeasy.onChange(...)` — see [Advanced](advanced.md).
+
+## Environment-derived egress defaults
+
+The SDK is **quiet by default outside production**. Two switches control outbound
+traffic, and both default **ON in production and OFF in every other environment**,
+so an app that embeds the SDK never phones home from a dev machine or CI unless it
+opts in:
+
+- **`.isNetworkEnabled(boolean)`** — the master switch. When `false` the SDK is
+  fully offline: rule fetch, `track`, exposure logging, `see()` reports **and**
+  telemetry are all suppressed, and reads resolve from overrides / seeded state /
+  in-code defaults.
+- **`.isTrackingEnabled(boolean)`** — per-evaluation usage telemetry only
+  (`.disableTelemetry(boolean)` is the back-compat inverse). Always forced off when
+  the network is disabled.
+
+"Production" is resolved with this precedence:
+
+1. A native runtime signal, checked in order: the `shipeasy.env` **system
+   property** (`-Dshipeasy.env=...`), then the env vars `SHIPEASY_ENV`, `APP_ENV`,
+   `ENV`. A value of `production`/`prod` (case-insensitive) ⇒ production; any other
+   present value ⇒ not production.
+2. If no native signal is set (common on serverless / mobile), the SDK's own
+   `.env(...)` option is used — it defaults to `"prod"`, so a real production
+   deploy stays online by default while `.env("dev")` stays quiet.
+
+An explicitly-passed `.isNetworkEnabled(...)` / `.isTrackingEnabled(...)` always
+wins over the environment-derived default.
+
+```java
+// A dev/staging deploy is offline by default — nothing is sent.
+Shipeasy.configure(Shipeasy.options(key).env("dev"));
+
+// Opt back in explicitly (or set SHIPEASY_ENV=production / -Dshipeasy.env=production):
+Shipeasy.configure(Shipeasy.options(key).env("dev").isNetworkEnabled(true));
+
+// Read flags/configs but never emit usage telemetry, even in production:
+Shipeasy.configure(Shipeasy.options(key).isTrackingEnabled(false));
+```
+
+> **Behaviour change (0.15.0):** builds before 0.15.0 always sent from every
+> environment. If you rely on egress from a non-production deploy, set
+> `SHIPEASY_ENV=production` (or `-Dshipeasy.env=production`) or pass
+> `.isNetworkEnabled(true)`.
 
 ## Fail-safe reads & the `logLevel` option
 

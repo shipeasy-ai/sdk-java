@@ -54,7 +54,16 @@ boolean killed  = c.getKillswitch("panic_button");         // kill switch
 ```
 
 `Shipeasy.configure` is first-config-wins; `new Client(user)` throws if called
-before it. Reference:
+before it.
+
+**Egress is quiet outside production (0.15.0+).** The SDK makes no outbound
+request (fetch/track/exposure/`see()`/telemetry) unless it looks like production —
+`shipeasy.env` system property or `SHIPEASY_ENV`/`APP_ENV`/`ENV` = `production`/
+`prod`, else the `.env(...)` option (defaults to `"prod"`). A dev/staging deploy is
+offline by default; opt back in with `.isNetworkEnabled(true)` (or set the env var).
+`.isTrackingEnabled(false)` disables just usage telemetry.
+
+Reference:
 <https://shipeasy-ai.github.io/sdk-java/pages/configuration.md> ·
 <https://shipeasy-ai.github.io/sdk-java/pages/flags.md>
 

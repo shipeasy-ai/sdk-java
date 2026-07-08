@@ -31,11 +31,29 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * interfere with that.
  */
 public final class InertInternalReportExtension implements BeforeEachCallback {
+
+    static {
+        // Declare the whole suite PRODUCTION-EQUIVALENT for egress. As of 0.15.0 the
+        // SDK is quiet outside production (no network by default in dev/CI), so
+        // without this every test that exercises a real network path — /collect
+        // POSTs to a loopback, see()/track/exposure sends, poll fetch — would be
+        // silently suppressed and fail. The `shipeasy.env` system property is the
+        // highest-precedence signal in Env#isProductionEnv, so forcing it here makes
+        // the production decision deterministic regardless of the CI machine's own
+        // SHIPEASY_ENV/APP_ENV/ENV vars. Dedicated egress-default tests
+        // (EnvDefaultsTest) clear it locally to assert the dev/prod branching.
+        System.setProperty("shipeasy.env", "production");
+    }
+
     @Override
     public void beforeEach(ExtensionContext context) {
         // Force the baked (now REAL) key back to the inert placeholder so no test
         // can reach a real send. keyConfigured() returns false for the placeholder,
         // which short-circuits InternalReport.report() before any network call.
         InternalReport.setIngestKeyForTest(InternalReport.PLACEHOLDER_KEY);
+        // Re-assert the production-equivalent egress signal before every test, in
+        // case a test cleared/changed it (EnvDefaultsTest does, and restores it,
+        // but this is a belt-and-braces guard against ordering).
+        System.setProperty("shipeasy.env", "production");
     }
 }

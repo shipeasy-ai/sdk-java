@@ -61,7 +61,11 @@ public final class Shipeasy {
         final String apiKey;
         String baseUrl;
         String env = "prod";
-        boolean disableTelemetry;
+        // Egress switches. Both are Boolean so null = "unset ⇒ use the
+        // environment-derived default" (ON in production, OFF everywhere else);
+        // a non-null value always wins. See Env#isProductionEnv.
+        Boolean isNetworkEnabled;
+        Boolean isTrackingEnabled;
         boolean disableInternalErrorReporting;
         boolean poll;
         java.util.List<String> privateAttributes = java.util.List.of();
@@ -121,9 +125,43 @@ public final class Shipeasy {
             return this;
         }
 
-        /** Turn off per-evaluation usage beacons (ON by default). */
+        /**
+         * Master egress switch — whether the SDK is allowed to make ANY outbound
+         * request (rules fetch, {@code track}, exposure logging, {@code see()}
+         * reports, AND telemetry). When {@code false} the SDK is fully offline:
+         * reads resolve from overrides / seeded state / code defaults and nothing
+         * is sent.
+         *
+         * <p>DEFAULT is <strong>environment-derived</strong> (see
+         * {@link Env#isProductionEnv}): ON in production, OFF in every other
+         * environment, so an app that embeds the SDK stays quiet on a dev machine
+         * or in CI unless it opts in. Pass {@code true}/{@code false} to override
+         * the default explicitly.
+         */
+        public Options isNetworkEnabled(boolean isNetworkEnabled) {
+            this.isNetworkEnabled = isNetworkEnabled;
+            return this;
+        }
+
+        /**
+         * Per-evaluation usage telemetry / tracking beacons. DEFAULT is
+         * environment-derived (same inference as {@link #isNetworkEnabled}): ON in
+         * production, OFF elsewhere. Forced off whenever the network is disabled.
+         * Pass {@code true}/{@code false} to override the default explicitly.
+         */
+        public Options isTrackingEnabled(boolean isTrackingEnabled) {
+            this.isTrackingEnabled = isTrackingEnabled;
+            return this;
+        }
+
+        /**
+         * Turn off per-evaluation usage beacons. Back-compat alias for
+         * {@code isTrackingEnabled(false)} (and {@code disableTelemetry(false)} for
+         * {@code isTrackingEnabled(true)}). With neither called, tracking defaults
+         * to the environment-derived value — see {@link #isTrackingEnabled}.
+         */
         public Options disableTelemetry(boolean disableTelemetry) {
-            this.disableTelemetry = disableTelemetry;
+            this.isTrackingEnabled = !disableTelemetry;
             return this;
         }
 
@@ -176,7 +214,8 @@ public final class Shipeasy {
         if (existing != null) return existing;
         synchronized (LOCK) {
             if (engine != null) return engine;
-            Engine e = new Engine(opts.apiKey, opts.baseUrl, opts.env, opts.disableTelemetry, opts.logLevel);
+            Engine e = new Engine(opts.apiKey, opts.baseUrl, opts.env,
+                opts.isTrackingEnabled, opts.isNetworkEnabled, opts.logLevel);
             e.privateAttributes(opts.privateAttributes).stickyStore(opts.stickyStore);
             e.setInternalErrorReporting(!opts.disableInternalErrorReporting);
             attributes = opts.attributes;
