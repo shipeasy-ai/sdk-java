@@ -139,8 +139,8 @@ public final class Client {
 
     /**
      * A user-bound universe handle: {@code new Client(user).universe("checkout").assign()}.
-     * A universe is a mutual-exclusion pool, so the bound unit lands in <=1
-     * experiment; the returned {@link Assignment} exposes {@code .group()} /
+     * A universe is a mutual-exclusion pool, so the bound unit lands in at most
+     * one experiment; the returned {@link Assignment} exposes {@code .group()} /
      * {@code .get(field, fallback)} and auto-logs one exposure when enrolled.
      * {@code assign()} takes no user argument — it forwards the bound attributes.
      * This replaces the removed {@code getExperiment} — read experiments by
