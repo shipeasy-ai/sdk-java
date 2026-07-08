@@ -584,8 +584,8 @@ public final class Engine implements AutoCloseable {
     /**
      * The universe-first experiment read entry point:
      * {@code engine.universe("checkout").assign(user)}. Returns a reusable handle
-     * bound to one universe; {@code assign(user)} picks the <=1 experiment the unit
-     * is pooled into and auto-logs a single exposure. See {@link #assignUniverse}.
+     * bound to one universe; {@code assign(user)} picks the at-most-one experiment
+     * the unit is pooled into and auto-logs a single exposure. See {@link #assignUniverse}.
      */
     public UniverseHandle universe(String name) {
         return new UniverseHandle(this, name);
