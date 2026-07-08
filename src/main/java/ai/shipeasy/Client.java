@@ -138,17 +138,39 @@ public final class Client {
     }
 
     /**
-     * Evaluate experiment {@code name} for the bound user, filling in
-     * {@code defaultParams} when the user is not enrolled / has no params.
-     * Never throws → not-enrolled {@code control}/{@code defaultParams}.
+     * A user-bound universe handle: {@code new Client(user).universe("checkout").assign()}.
+     * A universe is a mutual-exclusion pool, so the bound unit lands in <=1
+     * experiment; the returned {@link Assignment} exposes {@code .group()} /
+     * {@code .get(field, fallback)} and auto-logs one exposure when enrolled.
+     * {@code assign()} takes no user argument — it forwards the bound attributes.
+     * This replaces the removed {@code getExperiment} — read experiments by
+     * universe, never by name. Never throws.
      */
-    public ExperimentResult getExperiment(String name, Object defaultParams) {
-        try {
-            return engine.getExperiment(name, attributes, defaultParams);
-        } catch (Throwable t) {
-            Log.error("Client.getExperiment threw: " + t);
-            InternalReport.report("Client.getExperiment", t);
-            return new ExperimentResult(false, "control", defaultParams);
+    public BoundUniverse universe(String name) {
+        return new BoundUniverse(name);
+    }
+
+    /** A {@code universe(name)} handle pre-bound to this Client's user. */
+    public final class BoundUniverse {
+        private final String name;
+
+        private BoundUniverse(String name) {
+            this.name = name;
+        }
+
+        /**
+         * Assign the bound user within this universe. Returns an
+         * {@link Assignment}; auto-logs a single (deduped) exposure when enrolled.
+         * Never throws → a safe not-enrolled handle.
+         */
+        public Assignment assign() {
+            try {
+                return engine.assignUniverse(name, attributes);
+            } catch (Throwable t) {
+                Log.error("Client.universe.assign threw: " + t);
+                InternalReport.report("Client.universe.assign", t);
+                return new Assignment(null, null, java.util.Map.of());
+            }
         }
     }
 
@@ -204,22 +226,6 @@ public final class Client {
         } catch (Throwable t) {
             Log.error("Client.track threw: " + t);
             InternalReport.report("Client.track", t);
-        }
-    }
-
-    /**
-     * Emit an exposure event for experiment {@code experimentName} for the bound
-     * user. Re-evaluates the experiment with the bound attribute map (so
-     * targeting gates and {@code bucketBy} resolve correctly) and POSTs one
-     * exposure only when the user is enrolled. Delegates to
-     * {@link Engine#logExposure(Map, String)}.
-     */
-    public void logExposure(String experimentName) {
-        try {
-            engine.logExposure(attributes, experimentName);
-        } catch (Throwable t) {
-            Log.error("Client.logExposure threw: " + t);
-            InternalReport.report("Client.logExposure", t);
         }
     }
 

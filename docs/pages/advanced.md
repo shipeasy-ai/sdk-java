@@ -1,20 +1,21 @@
 # Advanced
 
-## Manual exposure logging
+## Exposure logging
 
-The server is stateless and never auto-logs experiment exposure. Call
-`logExposure` at the point you **present** the treatment so the analysis
-pipeline can attribute conversions:
+Exposure is **automatic**: `universe(name).assign()` POSTs one
+`{type:"exposure", experiment, group, user_id, ts}` event to `/collect` when the
+unit is enrolled — there is no manual `logExposure`. Just assign at the point you
+present the experiment:
 
 ```java
 // Assumes Shipeasy.configure(...) ran at startup — see Installation.
 Client c = new Client(Map.of("user_id", "u_123", "plan", "pro")); // construct once per callsite
-c.logExposure("checkout_button");
+Assignment a = c.universe("hero_cta").assign(); // auto-logs one exposure when enrolled
 ```
 
-It re-evaluates the experiment; if the user is enrolled it POSTs one
-`{type:"exposure", experiment, group, user_id, ts}` event to `/collect`. No-op
-in test/snapshot mode or when the user isn't enrolled.
+The exposure is **deduped per process**: repeated `assign()` calls for the same
+`(unit, experiment, group)` POST only one exposure. No-op in test/snapshot mode
+or when the unit isn't enrolled.
 
 ## Private attributes
 

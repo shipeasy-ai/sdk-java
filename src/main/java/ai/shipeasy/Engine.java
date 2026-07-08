@@ -32,7 +32,7 @@ public final class Engine implements AutoCloseable {
     private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
-    public static final String VERSION = "0.13.0";
+    public static final String VERSION = "0.14.0";
 
     private final String apiKey;
     private final String baseUrl;
@@ -87,7 +87,7 @@ public final class Engine implements AutoCloseable {
     private volatile List<String> privateAttributes;
 
     /**
-     * Optional sticky-bucketing store (doc 20 §2). When set, {@link #getExperiment}
+     * Optional sticky-bucketing store (doc 20 §2). When set, {@link #assignUniverse}
      * locks a unit to its first-assigned variant. {@code null} ⇒ deterministic
      * (fully backward compatible).
      */
@@ -102,6 +102,12 @@ public final class Engine implements AutoCloseable {
     // Change listeners fired after a background poll applies NEW (200, not 304)
     // data. Thread-safe to match the volatile-blob concurrency model.
     private final CopyOnWriteArrayList<Runnable> changeListeners = new CopyOnWriteArrayList<>();
+
+    // Per-process exposure dedup: `uid:experiment:group` keys already POSTed, so
+    // repeated assign() calls in one server don't spam /collect. Bounded (cleared
+    // at ~5000). Thread-safe to match the volatile-blob concurrency model.
+    private final java.util.Set<String> exposureSeen =
+        java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     public Engine(String apiKey) { this(apiKey, null, "prod", false); }
 
@@ -235,8 +241,10 @@ public final class Engine implements AutoCloseable {
     }
 
     /**
-     * Force {@link #getExperiment} for {@code name} to return an in-experiment
-     * result with the given {@code group} and {@code params}.
+     * Force the experiment {@code name} to resolve to an in-experiment result
+     * with the given {@code group} and {@code params}. Surfaces through
+     * {@code universe(name).assign(user)} when {@code name} is an experiment in
+     * that universe. An internal test/back-compat seam (still experiment-keyed).
      */
     public void overrideExperiment(String name, String group, Object params) {
         experimentOverrides.put(name, new ExperimentResult(true, group, params));
@@ -261,7 +269,7 @@ public final class Engine implements AutoCloseable {
     }
 
     /**
-     * Supply a sticky-bucketing store (doc 20 §2). When set, {@link #getExperiment}
+     * Supply a sticky-bucketing store (doc 20 §2). When set, {@link #assignUniverse}
      * locks a unit to its first-assigned variant — changing allocation % or group
      * weights won't re-bucket enrolled units (changing the experiment salt is the
      * reshuffle lever). Absent ⇒ deterministic. Returns {@code this} for chaining.
@@ -479,34 +487,108 @@ public final class Engine implements AutoCloseable {
     }
 
     /**
-     * <b>Fail-safe:</b> never throws into the caller — an unexpected error is
-     * caught, logged at error level, and a not-enrolled {@link ExperimentResult}
-     * ({@code group="control"}, {@code params=defaultParams}) is returned.
+     * Evaluate one experiment by name for {@code user} — override → full classify
+     * pipeline (targeting → universe holdout → holdout gate → sticky → allocation
+     * → group), merging the universe defaults under the assigned variant.
+     * Internal: the public surface is {@code universe(name).assign(user)}. Reused
+     * by the SSR {@link #evaluate} bootstrap (keyed by experiment name) and by
+     * {@link #assignUniverse}.
      */
-    public ExperimentResult getExperiment(String name, Map<String, Object> user, Object defaultParams) {
+    @SuppressWarnings("unchecked")
+    private Eval.ExpStanding evalExperiment(String name, Map<String, Object> exp, Map<String, Object> user) {
+        Map<String, Object> exps = expsBlob;
+        String universeName = exp == null ? null : (String) exp.get("universe");
+        Map<String, Object> paramDefaults = paramDefaultsFor(exps, universeName);
+
+        ExperimentResult override = experimentOverrides.get(name);
+        if (override != null) {
+            return Eval.ExpStanding.group(override.group, Eval.mergeParams(paramDefaults, override.params));
+        }
+        if (flagsBlob == null || exps == null || exp == null) return Eval.ExpStanding.OUT;
+        if (!"running".equals(exp.get("status"))) return Eval.ExpStanding.OUT;
+
+        List<Number> holdoutRange = Eval.holdoutRangeFor(exp, exps);
+        return Eval.classifyExperiment(exp, flagsBlob, user, holdoutRange, paramDefaults, stickyStore, name);
+    }
+
+    /** Universe param defaults out of the exps blob, or {@code null}. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> paramDefaultsFor(Map<String, Object> exps, String universeName) {
+        if (exps == null || universeName == null) return null;
+        Map<String, Object> universes = (Map<String, Object>) exps.get("universes");
+        Map<String, Object> universe = universes == null ? null : (Map<String, Object>) universes.get(universeName);
+        return universe == null ? null : Eval.paramDefaultsFromSchema(universe.get("param_schema"));
+    }
+
+    /**
+     * Assign {@code user} within {@code universeName}. A universe is a
+     * mutual-exclusion pool, so a unit lands in <strong>at most one</strong>
+     * experiment; the returned {@link Assignment} exposes the variant + resolved
+     * params and auto-logs a single exposure when enrolled. An un-enrolled unit
+     * still resolves {@code get()} to the universe defaults. Never throws. This is
+     * the sole experiment read path (there is no {@code getExperiment} — a caller
+     * asks a universe, not an experiment).
+     */
+    public Assignment assignUniverse(String universeName, Map<String, Object> user) {
         try {
-            return getExperimentImpl(name, user, defaultParams);
+            return assignUniverseImpl(universeName, user);
         } catch (Throwable t) {
-            Log.error("getExperiment threw: " + t);
-            return new ExperimentResult(false, "control", defaultParams);
+            Log.error("assignUniverse threw: " + t);
+            return new Assignment(null, null, Map.of());
         }
     }
 
     @SuppressWarnings("unchecked")
-    private ExperimentResult getExperimentImpl(String name, Map<String, Object> user, Object defaultParams) {
-        ExperimentResult override = experimentOverrides.get(name);
-        if (override != null) return override;
-        telemetry.emit("experiment", name);
-        Map<String, Object> flags = flagsBlob;
+    private Assignment assignUniverseImpl(String universeName, Map<String, Object> user) {
+        telemetry.emit("experiment", universeName);
+        Map<String, Object> u = withAnonId(user == null ? Map.of() : user);
         Map<String, Object> exps = expsBlob;
-        Map<String, Object> exp = null;
-        if (exps != null) {
-            Map<String, Object> all = (Map<String, Object>) exps.get("experiments");
-            if (all != null) exp = (Map<String, Object>) all.get(name);
+        Map<String, Object> paramDefaults = paramDefaultsFor(exps, universeName);
+        Map<String, Object> notEnrolled = paramDefaults == null ? Map.of() : paramDefaults;
+        if (exps == null) return new Assignment(null, null, notEnrolled);
+
+        Map<String, Object> all = (Map<String, Object>) exps.get("experiments");
+        if (all == null) return new Assignment(null, null, notEnrolled);
+
+        // Candidate running experiments in this universe. Deterministic order:
+        // pool-slice offset asc (slices are disjoint so <=1 matches under pooling),
+        // then name. A universe-held-out or unallocated unit falls through to the
+        // defaults-only handle.
+        java.util.List<Map.Entry<String, Object>> candidates = new java.util.ArrayList<>();
+        for (Map.Entry<String, Object> e : all.entrySet()) {
+            Map<String, Object> exp = (Map<String, Object>) e.getValue();
+            if (exp != null && universeName.equals(exp.get("universe")) && "running".equals(exp.get("status"))) {
+                candidates.add(e);
+            }
         }
-        ExperimentResult r = Eval.evalExperiment(exp, flags, exps, withAnonId(user), stickyStore, name);
-        if (r.params == null) return new ExperimentResult(r.inExperiment, r.group, defaultParams);
-        return r;
+        candidates.sort((a, b) -> {
+            int oa = ((Number) ((Map<String, Object>) a.getValue()).getOrDefault("poolOffsetBp", 0)).intValue();
+            int ob = ((Number) ((Map<String, Object>) b.getValue()).getOrDefault("poolOffsetBp", 0)).intValue();
+            return oa != ob ? Integer.compare(oa, ob) : a.getKey().compareTo(b.getKey());
+        });
+
+        for (Map.Entry<String, Object> e : candidates) {
+            String name = e.getKey();
+            Map<String, Object> exp = (Map<String, Object>) e.getValue();
+            Eval.ExpStanding s = evalExperiment(name, exp, u);
+            if (s.state == Eval.State.GROUP) {
+                postExposure(u, name, s.group);
+                return new Assignment(name, s.group, s.params == null ? Map.of() : s.params);
+            }
+            // "holdout"/"out": try the next candidate — under pooling only one
+            // slice can match, so the loop naturally lands on the winner.
+        }
+        return new Assignment(null, null, notEnrolled);
+    }
+
+    /**
+     * The universe-first experiment read entry point:
+     * {@code engine.universe("checkout").assign(user)}. Returns a reusable handle
+     * bound to one universe; {@code assign(user)} picks the <=1 experiment the unit
+     * is pooled into and auto-logs a single exposure. See {@link #assignUniverse}.
+     */
+    public UniverseHandle universe(String name) {
+        return new UniverseHandle(this, name);
     }
 
     /**
@@ -551,17 +633,28 @@ public final class Engine implements AutoCloseable {
                 }
             }
         }
+        // Per-universe param defaults so an SSR client can resolve
+        // `universe(name).get()` to a default even when the unit is not enrolled.
+        Map<String, Object> outUniverses = new LinkedHashMap<>();
         if (exps != null) {
             Map<String, Object> all = (Map<String, Object>) exps.get("experiments");
             if (all != null) {
                 for (Map.Entry<String, Object> e : all.entrySet()) {
-                    ExperimentResult ov = experimentOverrides.get(e.getKey());
-                    ExperimentResult r = ov != null ? ov
-                        : Eval.evalExperiment((Map<String, Object>) e.getValue(), flags, exps, u, stickyStore, e.getKey());
+                    Map<String, Object> expDef = (Map<String, Object>) e.getValue();
+                    String uniName = expDef == null ? null : (String) expDef.get("universe");
+                    if (uniName != null && !outUniverses.containsKey(uniName)) {
+                        Map<String, Object> pd = paramDefaultsFor(exps, uniName);
+                        Map<String, Object> defaults = new LinkedHashMap<>();
+                        if (pd != null) defaults.putAll(pd);
+                        outUniverses.put(uniName, Map.of("defaults", defaults));
+                    }
+                    Eval.ExpStanding s = evalExperiment(e.getKey(), expDef, u);
                     Map<String, Object> exp = new LinkedHashMap<>();
-                    exp.put("inExperiment", r.inExperiment);
-                    exp.put("group", r.group);
-                    exp.put("params", r.params);
+                    boolean inExp = s.state == Eval.State.GROUP;
+                    exp.put("inExperiment", inExp);
+                    exp.put("group", inExp ? s.group : "control");
+                    exp.put("params", inExp && s.params != null ? s.params : Map.of());
+                    if (uniName != null) exp.put("universe", uniName);
                     outExps.put(e.getKey(), exp);
                 }
             }
@@ -593,6 +686,7 @@ public final class Engine implements AutoCloseable {
         out.put("configs", outConfigs);
         out.put("experiments", outExps);
         out.put("killswitches", outKs);
+        out.put("universes", outUniverses);
         return out;
     }
 
@@ -759,47 +853,36 @@ public final class Engine implements AutoCloseable {
     }
 
     /**
-     * Emit an exposure event for an experiment at the server-side decision point
-     * (parity with the browser's auto-exposure). The server is stateless and
-     * never auto-logs, so call this when you actually present the treatment.
-     * Re-evaluates the experiment for {@code userId}; if the user is enrolled,
-     * POSTs a single {@code {type:"exposure", experiment, group, user_id, ts}}
-     * to {@code /collect}. No-op in test mode or when the user isn't enrolled.
+     * POST a single exposure for an enrolled {@code (user, experiment, group)}.
+     * Deduped per process (bounded set) so repeated {@code assign()} calls in one
+     * server don't spam {@code /collect}. Fire-and-forget; no-op in test mode.
+     * This is how {@link #assignUniverse} auto-logs — the browser's auto-exposure
+     * parity for SSR.
      */
-    public void logExposure(String userId, String experimentName) {
-        Map<String, Object> user = new HashMap<>();
-        if (userId != null) user.put("user_id", userId);
-        logExposure(user, experimentName);
-    }
-
-    /**
-     * As {@link #logExposure(String, String)} but takes a user attribute map
-     * (so targeting gates and {@code bucketBy} resolve correctly). Re-evaluates
-     * and POSTs one exposure event for an enrolled user. No-op in test mode or
-     * when the user isn't enrolled.
-     */
-    public void logExposure(Map<String, Object> user, String experimentName) {
+    private void postExposure(Map<String, Object> user, String experiment, String group) {
         try {
             if (localMode) return;
-            Map<String, Object> u = user == null ? Map.of() : user;
-            ExperimentResult r = getExperiment(experimentName, u, null);
-            if (!r.inExperiment) return;
+            Object uid = user.get("user_id");
+            Object anon = user.get("anonymous_id");
+            String unit = uid != null ? uid.toString() : (anon != null ? anon.toString() : "");
+            String dedupKey = unit + ":" + experiment + ":" + group;
+            if (exposureSeen.contains(dedupKey)) return;
+            if (exposureSeen.size() > 5000) exposureSeen.clear();
+            exposureSeen.add(dedupKey);
             Map<String, Object> event = new HashMap<>();
             event.put("type", "exposure");
-            event.put("experiment", experimentName);
-            event.put("group", r.group);
-            Object uid = u.get("user_id");
+            event.put("experiment", experiment);
+            event.put("group", group);
             if (uid != null) event.put("user_id", uid);
-            Object anon = u.get("anonymous_id");
             if (anon != null) event.put("anonymous_id", anon);
             event.put("ts", Instant.now().toEpochMilli());
             Map<String, Object> body = Map.of("events", List.of(event));
             scheduler.execute(() -> {
                 try { post("/collect", mapper.writeValueAsBytes(body)); }
-                catch (Exception e) { Log.warn("logExposure failed: " + e.getMessage()); }
+                catch (Exception e) { Log.warn("exposure send failed: " + e.getMessage()); }
             });
         } catch (Throwable t) {
-            Log.error("logExposure threw: " + t);
+            Log.error("postExposure threw: " + t);
         }
     }
 

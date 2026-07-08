@@ -1,25 +1,30 @@
-Bucket a user into `{{EXPERIMENT_KEY}}`, then track the `{{SUCCESS_EVENT}}`
-conversion. Assumes `configure()` ran at startup — see Installation.
+Assign a unit within a universe (a mutual-exclusion pool — the unit lands in <=1
+experiment), read the assigned params, then record the conversion event on the
+same bound `Client`. Assumes `configure()` ran at startup — see Installation.
 
 ```java
 import ai.shipeasy.Client;
-import ai.shipeasy.ExperimentResult;
+import ai.shipeasy.Assignment;
 import java.util.Map;
 
-// construct once per callsite (cheap; binds the user)
+// construct once per callsite (cheap; binds the user + runs the attributes transform)
 Client client = new Client(Map.of("user_id", "u_123"));
 
-ExperimentResult r = client.getExperiment(
-    "{{EXPERIMENT_KEY}}",        // experiment name
-    Map.of("color", "blue"));   // defaultParams — filled in when not enrolled
+// universe(name).assign() -> Assignment
+//   name       — the UNIVERSE name (not an experiment); the unit lands in <=1 experiment
+//   .name()    — the experiment the unit landed in, or null when not enrolled
+//   .group()   — the assigned variant, or null when not enrolled
+//   .enrolled()— == (group() != null)
+//   .get(field, fallback) — variant override ?? universe default ?? fallback
+// assign() takes no arg (user bound at construction) and auto-logs one exposure.
+Assignment exp = client.universe("{{EXPERIMENT_KEY}}").assign();
 
-if (r.inExperiment && "treatment".equals(r.group)) {
-    // render the treatment variant; r.params carries the assigned parameters
-}
+String label = (String) exp.get("primary_label", "Sign up"); // always safe — falls back when not enrolled
 
-// later, on conversion — track() lives on the bound Client (NOT the Engine);
-// the unit id is derived from the bound user (user_id, else anonymous_id):
-client.track(
-    "{{SUCCESS_EVENT}}",        // event name
-    Map.of("amount", 49));      // optional properties bag (track(name) omits it)
+// On conversion — Client-only track (NOT the Engine); the unit is inferred
+// from the bound user (user_id, else anonymous_id):
+//   track(eventName, props?)
+//     eventName — the success event name
+//     props     — optional metric properties (private attrs are stripped)
+client.track("{{SUCCESS_EVENT}}", Map.of("group", String.valueOf(exp.group()))); // props optional
 ```

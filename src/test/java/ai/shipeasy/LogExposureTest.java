@@ -20,9 +20,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Manual exposure (server): the server never auto-logs. {@code logExposure}
- * re-evaluates the experiment and, only when the user is enrolled, POSTs one
+ * Auto-exposure (server): {@code universe(name).assign(user)} logs a single
+ * (deduped) exposure when the unit is enrolled, POSTing one
  * {@code {type:"exposure", experiment, group, user_id, ts}} to {@code /collect}.
+ * A not-enrolled unit logs nothing.
  */
 class LogExposureTest {
 
@@ -42,7 +43,8 @@ class LogExposureTest {
             "groups", List.of(
                 Map.of("name", "control", "weight", 9086, "params", Map.of("variant", "a")),
                 Map.of("name", "treatment", "weight", 914, "params", Map.of("variant", "b"))));
-        return Map.of("experiments", Map.of("pricing_test", exp), "universes", Map.of());
+        return Map.of("experiments", Map.of("pricing_test", exp),
+            "universes", Map.of("universe_pricing", java.util.Collections.singletonMap("holdout_range", null)));
     }
 
     @BeforeEach
@@ -82,7 +84,9 @@ class LogExposureTest {
     void enrolledUserPostsOneExposure() throws Exception {
         try (Engine c = new Engine("k", baseUrl())) {
             c.applyDataForTest(Map.of("gates", Map.of()), runningExps());
-            c.logExposure("user_beta", "pricing_test");
+            Assignment a = c.universe("universe_pricing").assign(Map.of("user_id", "user_beta"));
+            assertEquals("pricing_test", a.name());
+            assertEquals("control", a.group());
             Map<String, Object> event = awaitEvent();
             assertEquals("exposure", event.get("type"));
             assertEquals("pricing_test", event.get("experiment"));
@@ -103,31 +107,41 @@ class LogExposureTest {
                 "status", "draft",
                 "groups", List.of(Map.of("name", "control", "weight", 10000, "params", Map.of())));
             c.applyDataForTest(Map.of("gates", Map.of()),
-                Map.of("experiments", Map.of("pricing_test", exp), "universes", Map.of()));
-            c.logExposure("user_beta", "pricing_test");
+                Map.of("experiments", Map.of("pricing_test", exp),
+                    "universes", Map.of("universe_pricing", java.util.Collections.singletonMap("holdout_range", null))));
+            Assignment a = c.universe("universe_pricing").assign(Map.of("user_id", "user_beta"));
+            assertEquals(false, a.enrolled());
             // Give the async path a moment; nothing should arrive.
             assertEquals(false, received.await(1, TimeUnit.SECONDS),
                 "no exposure must be POSTed for an unenrolled user");
         }
     }
 
+    // A second assign for the same (unit, experiment, group) is deduped — only
+    // one exposure is POSTed per process.
     @Test
-    void mapOverloadResolvesTargeting() throws Exception {
+    void repeatedAssignDedupesExposure() throws Exception {
         try (Engine c = new Engine("k", baseUrl())) {
             c.applyDataForTest(Map.of("gates", Map.of()), runningExps());
-            c.logExposure(Map.of("user_id", "user_beta"), "pricing_test");
+            c.universe("universe_pricing").assign(Map.of("user_id", "user_beta"));
+            // First exposure lands and drops the latch to 0.
             Map<String, Object> event = awaitEvent();
             assertEquals("exposure", event.get("type"));
-            assertEquals("user_beta", event.get("user_id"));
+            // A second assign for the same (unit, exp, group) must NOT re-POST.
+            received = new CountDownLatch(1);
+            c.universe("universe_pricing").assign(Map.of("user_id", "user_beta"));
+            assertEquals(false, received.await(1, TimeUnit.SECONDS),
+                "a repeated assign must not POST a second exposure");
         }
     }
 
-    // logExposure on a test-mode client is a no-op (never touches the network).
+    // assign on a test-mode client is a no-op for exposure (never touches network).
     @Test
-    void logExposureNoOpInTestMode() {
+    void assignNoOpExposureInTestMode() {
         try (Engine c = Engine.forTesting()) {
             c.overrideExperiment("pricing_test", "treatment", Map.of());
-            c.logExposure("user_beta", "pricing_test"); // must not throw / not POST
+            // No blob -> no candidate -> not enrolled; must not throw / not POST.
+            c.universe("universe_pricing").assign(Map.of("user_id", "user_beta"));
         }
     }
 }

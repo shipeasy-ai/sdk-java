@@ -421,7 +421,8 @@ public final class Shipeasy {
         requireEngine("overrideConfig").overrideConfig(name, value);
     }
 
-    /** Force {@code getExperiment(name)} to enrol in {@code group}/{@code params} (see {@link #overrideFlag}). */
+    /** Force experiment {@code name} to enrol in {@code group}/{@code params}, surfaced
+     *  through {@code universe(name).assign()} (see {@link #overrideFlag}). */
     public static void overrideExperiment(String name, String group, Object params) {
         requireEngine("overrideExperiment").overrideExperiment(name, group, params);
     }

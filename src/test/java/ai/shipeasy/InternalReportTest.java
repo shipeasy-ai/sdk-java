@@ -104,11 +104,11 @@ class InternalReportTest {
     @Test
     void buildsStableConsequenceWithSdkMarker() throws Exception {
         InternalReport.setContext("9.9.9", true);
-        InternalReport.report("Client.getExperiment", new RuntimeException("boom"));
+        InternalReport.report("Client.universe.assign", new RuntimeException("boom"));
         Map<String, Object> ev = awaitEvent();
         assertEquals("error", ev.get("type"));
         assertEquals("caught", ev.get("kind"));
-        assertEquals("Client.getExperiment", ev.get("subject"));
+        assertEquals("Client.universe.assign", ev.get("subject"));
         assertEquals("returned a safe default", ev.get("outcome"));
         assertEquals("RuntimeException", ev.get("error_type"));
         assertEquals("boom", ev.get("message"));

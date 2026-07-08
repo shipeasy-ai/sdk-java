@@ -96,7 +96,7 @@ class StickyBucketingTest {
         assertEquals(r.group, store.get("user_beta").get("pricing_test").group);
     }
 
-    // Integration through Engine.getExperiment with a supplied store: a unit
+    // Integration through Engine.universe().assign() with a supplied store: a unit
     // bucketed at full allocation stays enrolled after the allocation shrinks.
     @Test
     void clientStickyStoreLocksAssignment() {
@@ -106,18 +106,18 @@ class StickyBucketingTest {
                 Map.of("pricing_test", exp(10000, "exp_pricing_42")));
             c.applyDataForTest(Map.of("gates", Map.of()), exps);
 
-            ExperimentResult first = c.getExperiment("pricing_test", USER, Map.of());
-            assertTrue(first.inExperiment);
-            String pinned = first.group;
+            Assignment first = c.universe("universe_pricing").assign(USER);
+            assertTrue(first.enrolled());
+            String pinned = first.group();
 
             // Allocation collapses to 0% — deterministic eval would drop the unit.
             Map<String, Object> shrunk = Map.of("experiments",
                 Map.of("pricing_test", exp(0, "exp_pricing_42")));
             c.applyDataForTest(Map.of("gates", Map.of()), shrunk);
 
-            ExperimentResult second = c.getExperiment("pricing_test", USER, Map.of());
-            assertTrue(second.inExperiment); // still in, thanks to the store
-            assertEquals(pinned, second.group);
+            Assignment second = c.universe("universe_pricing").assign(USER);
+            assertTrue(second.enrolled()); // still in, thanks to the store
+            assertEquals(pinned, second.group());
         }
     }
 

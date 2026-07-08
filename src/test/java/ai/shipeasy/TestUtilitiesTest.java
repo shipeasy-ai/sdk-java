@@ -32,10 +32,24 @@ class TestUtilitiesTest {
         });
     }
 
-    // Each override is returned by the matching getter.
+    // A real experiment in universe "checkout": group "control" for every unit.
+    private static Map<String, Object> checkoutSnapshotExps() {
+        Map<String, Object> exp = Map.of(
+            "universe", "checkout",
+            "allocationPct", 10000,
+            "salt", "s",
+            "status", "running",
+            "groups", java.util.List.of(Map.of("name", "control", "weight", 10000, "params", Map.of("color", "grey"))));
+        return Map.of(
+            "universes", Map.of("checkout", java.util.Collections.singletonMap("holdout_range", null)),
+            "experiments", Map.of("checkout_button", exp));
+    }
+
+    // Each override is returned by the matching getter; an experiment override
+    // surfaces through universe().assign() when the experiment lives in the blob.
     @Test
     void overridesWin() {
-        try (Engine c = Engine.forTesting()) {
+        try (Engine c = Engine.fromSnapshot(Map.of("gates", Map.of()), checkoutSnapshotExps())) {
             c.overrideFlag("new_checkout", true);
             assertTrue(c.getFlag("new_checkout", Map.of()));
 
@@ -43,17 +57,18 @@ class TestUtilitiesTest {
             assertEquals(Map.of("title", "Hi"), c.getConfig("billing_copy"));
 
             c.overrideExperiment("checkout_button", "treatment", Map.of("color", "green"));
-            ExperimentResult r = c.getExperiment("checkout_button", Map.of(), Map.of("color", "blue"));
-            assertTrue(r.inExperiment);
-            assertEquals("treatment", r.group);
-            assertEquals(Map.of("color", "green"), r.params);
+            Assignment a = c.universe("checkout").assign(Map.of("user_id", "u1"));
+            assertTrue(a.enrolled());
+            assertEquals("treatment", a.group());
+            assertEquals("green", a.get("color", "blue"));
         }
     }
 
-    // clearOverrides() resets every override back to the no-override behavior.
+    // clearOverrides() resets every override back to the no-override behavior;
+    // the experiment reverts to its real assignment (group control).
     @Test
     void clearOverridesResets() {
-        try (Engine c = Engine.forTesting()) {
+        try (Engine c = Engine.fromSnapshot(Map.of("gates", Map.of()), checkoutSnapshotExps())) {
             c.overrideFlag("new_checkout", true);
             c.overrideConfig("billing_copy", "x");
             c.overrideExperiment("checkout_button", "treatment", Map.of("color", "green"));
@@ -62,9 +77,10 @@ class TestUtilitiesTest {
 
             assertFalse(c.getFlag("new_checkout", Map.of()));
             assertNull(c.getConfig("billing_copy"));
-            ExperimentResult r = c.getExperiment("checkout_button", Map.of(), Map.of("color", "blue"));
-            assertFalse(r.inExperiment);
-            assertEquals(Map.of("color", "blue"), r.params);
+            Assignment a = c.universe("checkout").assign(Map.of("user_id", "u1"));
+            assertTrue(a.enrolled());
+            assertEquals("control", a.group());
+            assertEquals("grey", a.get("color", "blue"));
         }
     }
 

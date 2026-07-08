@@ -89,12 +89,12 @@ To react when a poll applies new data, register a change listener with
 ## Fail-safe reads & the `logLevel` option
 
 Runtime reads never throw into your code. `getFlag` / `getFlagDetail` /
-`getConfig` / `getExperiment` / `getKillswitch` — and `track` / `logExposure` /
-`see()` — always return a safe default on any unexpected error rather than
-propagate it: `getFlag` → your default (or `false`), `getConfig` → your default
-(or `null`), `getExperiment` → a not-enrolled `control` result with your
-`defaultParams`, `getKillswitch` → `false`. A flag read can never take down a
-request path.
+`getConfig` / `universe().assign()` / `getKillswitch` — and `track` / `see()` —
+always return a safe default on any unexpected error rather than propagate it:
+`getFlag` → your default (or `false`), `getConfig` → your default (or `null`),
+`universe().assign()` → a not-enrolled `Assignment` (`group() == null`, `get()`
+resolves the universe default or your fallback), `getKillswitch` → `false`. A
+flag read can never take down a request path.
 
 Setup and lifecycle calls still throw loudly, because they signal
 misconfiguration you want to catch at boot: `new Client(user)` before

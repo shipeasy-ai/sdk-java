@@ -64,7 +64,7 @@ boolean enabled = c.getFlag("new_checkout");
 Object  cfg     = c.getConfig("billing_copy");
 boolean killed  = c.getKillswitch("panic_button");
 
-c.logExposure("checkout_button");           // emit the exposure when you present it
+Assignment cta = c.universe("hero_cta").assign(); // <=1 experiment; auto-logs exposure
 c.track("purchase", Map.of("amount", 49));  // record the conversion
 ```
 
@@ -80,7 +80,7 @@ Constructing `new Client(user)` before `configure()` throws.
 | [Feature flags](https://github.com/shipeasy-ai/sdk-java/blob/main/docs/pages/flags.md) | `getFlag`, `getFlagDetail`, defaults. |
 | [Dynamic configs](https://github.com/shipeasy-ai/sdk-java/blob/main/docs/pages/configs.md) | `getConfig`, typed reads, defaults. |
 | [Kill switches](https://github.com/shipeasy-ai/sdk-java/blob/main/docs/pages/killswitches.md) | `getKillswitch`, named switches. |
-| [Experiments](https://github.com/shipeasy-ai/sdk-java/blob/main/docs/pages/experiments.md) | `getExperiment`, `logExposure`, `track`. |
+| [Experiments](https://github.com/shipeasy-ai/sdk-java/blob/main/docs/pages/experiments.md) | `universe().assign()`, `Assignment`, `track`. |
 | [Internationalization](https://github.com/shipeasy-ai/sdk-java/blob/main/docs/pages/i18n.md) | SSR bootstrap + i18n loader tags. |
 | [Error reporting](https://github.com/shipeasy-ai/sdk-java/blob/main/docs/pages/error-reporting.md) | `see()` structured error reporting. |
 | [Testing](https://github.com/shipeasy-ai/sdk-java/blob/main/docs/pages/testing.md) | `configureForTesting` / `configureForOffline`, overrides. |
@@ -98,20 +98,15 @@ Test mode is a drop-in sibling of `Shipeasy.configure(...)` with **no network, e
 ```java
 import ai.shipeasy.Shipeasy;
 import ai.shipeasy.Client;
-import ai.shipeasy.ExperimentResult;
 import java.util.Map;
 
 Shipeasy.configureForTesting(Shipeasy.testOptions()
-    .flags(Map.of("new_checkout", true))                       // name -> bool
-    .configs(Map.of("billing_copy", Map.of("title", "Hello"))) // name -> value
-    .experiments(Map.of(                                       // name -> Variant.of(group, params)
-        "checkout_button", Shipeasy.Variant.of("treatment", Map.of("color", "green")))));
+    .flags(Map.of("new_checkout", true))                        // name -> bool
+    .configs(Map.of("billing_copy", Map.of("title", "Hello")))); // name -> value
 
 Client c = new Client(Map.of("user_id", "u_1"));               // construct once per callsite
 boolean enabled = c.getFlag("new_checkout");                  // true
 Object cfg = c.getConfig("billing_copy");                     // {title=Hello}
-ExperimentResult r = c.getExperiment("checkout_button", Map.of("color", "blue"));
-// r.inExperiment == true, r.group == "treatment", r.params == {color=green}
 ```
 
 More — the on-the-spot override helpers and a working example snapshot file — on

@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.14.0 — 2026-07-08
+
+### BREAKING — experiments are now read by universe, not by name
+
+The whole experiment read surface is replaced. A **universe is a mutual-exclusion
+pool**: a unit is enrolled in **at most one** experiment in it, so you ask a
+universe for an assignment instead of naming an experiment. `Engine.getExperiment`,
+`Engine.logExposure`, `Client.getExperiment`, and `Client.logExposure` are
+**removed**.
+
+```java
+// Before (removed):
+ExperimentResult r = c.getExperiment("checkout_button", Map.of("color", "red"));
+if (r.inExperiment && "green".equals(((Map<?,?>) r.params).get("color"))) { … }
+c.logExposure("checkout_button");
+
+// After:
+Assignment a = c.universe("checkout").assign();               // Client binds the user
+if ("green".equals(a.get("color", "red"))) { … }              // variant ?? universe default ?? fallback
+// (exposure is auto-logged by assign() — no manual logExposure)
+```
+
+- **`universe(name).assign(user?)`** returns an `Assignment` (never throws):
+  - `.name()` — the experiment the unit landed in, or `null` when not enrolled.
+  - `.group()` — the assigned variant, or `null` when not enrolled.
+  - `.enrolled()` — `== (group() != null)`.
+  - `.get(field, fallback)` (and the typed `get(field, Class<T>, fallback)`) —
+    resolves **variant override ?? universe default ?? fallback**. Works even when
+    not enrolled (you get the universe default), because the universe now owns the
+    param schema + defaults. On the bound `Client`, `universe(name).assign()` takes
+    no user argument (it forwards the bound attributes); on the `Engine`,
+    `universe(name).assign(user)` takes the user map.
+- **Auto-exposure.** `assign()` logs a single exposure when the unit is enrolled,
+  deduped per process (`uid:experiment:group`). The manual `logExposure` primitive
+  is gone — reading *is* the exposure. No-op in test/snapshot mode.
+- **Mutual exclusion (pooled assignment), per-experiment holdout gates, reserved
+  headroom, and universe-default⊕variant param merge** are now honoured by local
+  eval, matching the edge. Local eval reads the new optional experiment fields
+  `holdoutGate`, `poolOffsetBp`, `poolSizeBp`, `reservedHeadroomBp`, `hashVersion`
+  and the universe `param_schema`.
+- The `evaluate()` SSR bootstrap payload now carries a top-level `universes`
+  defaults map and a `universe` field per experiment entry, and each entry's
+  `params` are the merged (universe-default ⊕ variant) params.
+
+`overrideExperiment` (on `Engine` and the `Shipeasy` static) is kept as an
+internal test seam — it now surfaces through `universe(name).assign()` when the
+experiment exists in the loaded blob (it refines an experiment that lives in a
+universe; it does not invent one in an empty universe).
+
+Migration: replace each `getExperiment("<exp>", defaults)` with
+`universe("<the experiment's universe>").assign()` and read fields via
+`.get("field", fallbackFromDefaults)`; delete `logExposure` calls (exposure is
+automatic).
+
 ## 0.13.0 — 2026-07-08
 
 ### Added

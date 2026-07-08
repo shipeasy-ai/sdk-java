@@ -39,7 +39,7 @@ public class GenReadme {
         BLURB.put("flags", "`getFlag`, `getFlagDetail`, defaults.");
         BLURB.put("configs", "`getConfig`, typed reads, defaults.");
         BLURB.put("killswitches", "`getKillswitch`, named switches.");
-        BLURB.put("experiments", "`getExperiment`, `logExposure`, `track`.");
+        BLURB.put("experiments", "`universe().assign()`, `Assignment`, `track`.");
         BLURB.put("i18n", "SSR bootstrap + i18n loader tags.");
         BLURB.put("error-reporting", "`see()` structured error reporting.");
         BLURB.put("testing", "`configureForTesting` / `configureForOffline`, overrides.");

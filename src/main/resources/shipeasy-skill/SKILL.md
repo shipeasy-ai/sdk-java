@@ -1,6 +1,6 @@
 ---
 name: shipeasy-java
-description: Use Shipeasy (feature flags, configs, kill switches, A/B experiments, i18n) from Java. Covers configure() + Client(user), getFlag/getConfig/getExperiment, track, testing, OpenFeature.
+description: Use Shipeasy (feature flags, configs, kill switches, A/B experiments, i18n) from Java. Covers configure() + Client(user), getFlag/getConfig/universe().assign(), track, testing, OpenFeature.
 ---
 
 # Shipeasy Java SDK
@@ -30,7 +30,7 @@ Maven (`ai.shipeasy:shipeasy`):
 ```java
 import ai.shipeasy.Shipeasy;
 import ai.shipeasy.Client;
-import ai.shipeasy.ExperimentResult;
+import ai.shipeasy.Assignment;
 import java.util.Map;
 
 // Once, at startup. Builds the global engine + kicks off the initial fetch.
@@ -60,12 +60,15 @@ before it. Reference:
 
 ## Experiments + track (Client-only, end to end)
 
+Experiments are read by **universe** (a mutual-exclusion pool — the unit lands in
+<=1 experiment). `assign()` auto-logs one deduped exposure when enrolled.
+
 ```java
 Client c = new Client(myUser);                             // construct once per callsite
-ExperimentResult r = c.getExperiment("checkout_button", Map.of("color", "blue"));
-if (r.inExperiment && "treatment".equals(r.group)) { /* render variant from r.params */ }
+Assignment exp = c.universe("hero_cta").assign();          // <=1 experiment in the universe
+if (exp.enrolled()) { /* exp.group() is the variant; read params with exp.get(...) */ }
+String label = (String) exp.get("primary_label", "Sign up"); // variant ?? universe default ?? fallback
 
-c.logExposure("checkout_button");                          // record where you present it
 c.track("purchase", Map.of("amount", 49));                 // conversion for the bound user
 ```
 
@@ -101,9 +104,10 @@ import java.util.Map;
 // prior config, so each test can reconfigure freely.
 Shipeasy.configureForTesting(Shipeasy.testOptions()
     .flags(Map.of("new_checkout", true))
-    .configs(Map.of("billing_copy", Map.of("title", "Hello")))
-    .experiments(Map.of("checkout_button", Shipeasy.Variant.of("treatment", Map.of("color", "green")))));
+    .configs(Map.of("billing_copy", Map.of("title", "Hello"))));
 boolean on = new Client(Map.of("user_id", "u_1")).getFlag("new_checkout"); // true
+// To assert an assignment, seed a real universe+experiment via configureForOffline,
+// then read new Client(user).universe("hero_cta").assign().
 
 Shipeasy.overrideFlag("new_checkout", false);              // flip on the spot
 Shipeasy.clearOverrides();                                 // drop every override (incl. the seed)

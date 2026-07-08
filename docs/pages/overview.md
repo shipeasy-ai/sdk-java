@@ -27,7 +27,7 @@ boolean enabled = c.getFlag("new_checkout");
 Object  cfg     = c.getConfig("billing_copy");
 boolean killed  = c.getKillswitch("panic_button");
 
-c.logExposure("checkout_button");           // emit the exposure when you present it
+Assignment cta = c.universe("hero_cta").assign(); // <=1 experiment; auto-logs exposure
 c.track("purchase", Map.of("amount", 49));  // record the conversion
 ```
 
@@ -47,9 +47,9 @@ Constructing a `Client` before `configure()` has run throws
 - [Flags](flags.md) — `getFlag`, defaults, `getFlagDetail`.
 - [Configs](configs.md) — `getConfig`, typed values, defaults.
 - [Kill switches](killswitches.md) — `getKillswitch` and named per-key switches.
-- [Experiments](experiments.md) — `getExperiment`, `ExperimentResult`, `track`/`logExposure`.
+- [Experiments](experiments.md) — `universe().assign()`, `Assignment`, `track`.
 - [i18n](i18n.md) — SSR bootstrap for the browser SDK (the server SDK has no `t()`).
 - [Error reporting](error-reporting.md) — `see()` structured error reporting.
 - [Testing](testing.md) — `configureForTesting()` / `configureForOffline()` + the override statics.
 - [OpenFeature](openfeature.md) — the `ShipeasyProvider` server provider.
-- [Advanced](advanced.md) — manual exposure, private attributes, sticky bucketing, anon-id middleware, change listeners, SSR.
+- [Advanced](advanced.md) — auto-exposure, private attributes, sticky bucketing, anon-id middleware, change listeners, SSR.

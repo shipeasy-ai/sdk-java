@@ -7,28 +7,44 @@ your code under test should see and registers the global engine, so the same
 
 ## `Shipeasy.configureForTesting(...)`
 
-Seed flags, configs, and experiments up front, then read through the ordinary
-bound `Client`. It **replaces** any previously-configured engine, so each test can
-reconfigure freely.
+Seed flags and configs up front, then read through the ordinary bound `Client`.
+It **replaces** any previously-configured engine, so each test can reconfigure
+freely. In this mode the rules never fetch, `track()` is a no-op, and
+`universe().assign()` logs no exposure.
 
 ```java
 import ai.shipeasy.Shipeasy;
 import ai.shipeasy.Client;
-import ai.shipeasy.ExperimentResult;
 import java.util.Map;
 
 Shipeasy.configureForTesting(Shipeasy.testOptions()
-    .flags(Map.of("new_checkout", true))                       // name -> bool
-    .configs(Map.of("billing_copy", Map.of("title", "Hello"))) // name -> value
-    .experiments(Map.of(                                       // name -> Variant.of(group, params)
-        "checkout_button", Shipeasy.Variant.of("treatment", Map.of("color", "green")))));
+    .flags(Map.of("new_checkout", true))                        // name -> bool
+    .configs(Map.of("billing_copy", Map.of("title", "Hello")))); // name -> value
 
 Client c = new Client(Map.of("user_id", "u_1"));               // construct once per callsite
 boolean enabled = c.getFlag("new_checkout");                  // true
 Object cfg = c.getConfig("billing_copy");                     // {title=Hello}
-ExperimentResult r = c.getExperiment("checkout_button", Map.of("color", "blue"));
-// r.inExperiment == true, r.group == "treatment", r.params == {color=green}
 ```
+
+To assert an **experiment** assignment, seed a real universe + experiment with
+`configureForOffline()` (below) — an experiment override refines an experiment
+that lives in a universe; it doesn't invent one in an empty universe. Read it
+with `universe(name).assign()`:
+
+```java
+import ai.shipeasy.Assignment;
+
+Assignment exp = new Client(Map.of("user_id", "u_1")).universe("hero_cta").assign();
+exp.enrolled();                   // true when the seeded experiment enrolled the unit
+exp.group();                      // the assigned variant, or null
+exp.get("primary_label", "Sign up"); // variant ?? universe default ?? fallback
+```
+
+An `.experiments(...)` seed (and `overrideExperiment`) **refines** an experiment
+that already lives in a universe — it forces that experiment's variant. It does
+not invent an experiment in an empty universe, and it is read by universe, not by
+experiment name. On an empty test-mode blob (no snapshot) `universe().assign()`
+returns not-enrolled regardless of the seed.
 
 ## On-the-spot overrides
 
@@ -40,6 +56,7 @@ to the empty-blob defaults).
 ```java
 Shipeasy.overrideFlag("new_checkout", false);
 Shipeasy.overrideConfig("billing_copy", Map.of("title", "Bye"));
+// Refines an experiment that lives in a universe (seed it via configureForOffline):
 Shipeasy.overrideExperiment("checkout_button", "control", Map.of("color", "blue"));
 
 Shipeasy.clearOverrides(); // drops the overrides AND the configureForTesting seed

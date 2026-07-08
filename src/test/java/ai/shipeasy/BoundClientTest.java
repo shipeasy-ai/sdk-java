@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -85,8 +86,8 @@ class BoundClientTest {
         assertTrue(ex.getMessage().contains("configure"));
     }
 
-    // getConfig / getExperiment / getKillswitch forward to the engine with the
-    // bound attrs (no user argument).
+    // getConfig / universe().assign() / getKillswitch forward to the engine with
+    // the bound attrs (no user argument).
     @Test
     void configExperimentKillswitchForward() {
         Map<String, Object> flags = Map.of(
@@ -102,10 +103,12 @@ class BoundClientTest {
         assertEquals(Map.of("title", "Hi"), c.getConfig("copy"));
         assertEquals("fallback", c.getConfig("absent", "fallback"));
 
-        // experiment: not enrolled -> default params come back.
-        ExperimentResult r = c.getExperiment("none", Map.of("k", "v"));
-        assertFalse(r.inExperiment);
-        assertEquals(Map.of("k", "v"), r.params);
+        // experiment: an empty universe enrols nobody -> not enrolled, get()
+        // resolves the caller's fallback (no universe defaults present).
+        Assignment a = c.universe("none").assign();
+        assertFalse(a.enrolled());
+        assertNull(a.group());
+        assertEquals("v", a.get("k", "v"));
 
         assertTrue(c.getKillswitch("panic"));
         assertFalse(c.getKillswitch("feature"));
@@ -182,10 +185,10 @@ class BoundClientTest {
         }
     }
 
-    // The bound Client.logExposure re-evaluates with the bound attributes and
-    // POSTs one exposure for an enrolled user.
+    // The bound Client.universe().assign() re-evaluates with the bound attributes
+    // and auto-logs one exposure for an enrolled user.
     @Test
-    void boundLogExposurePostsForEnrolledUser() throws Exception {
+    void boundAssignPostsExposureForEnrolledUser() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         AtomicReference<String> body = new AtomicReference<>();
         CountDownLatch received = new CountDownLatch(1);
@@ -207,10 +210,12 @@ class BoundClientTest {
                 Map.of("name", "treatment", "weight", 914, "params", Map.of("variant", "b"))));
         try (Engine engine = new Engine("k", "http://127.0.0.1:" + server.getAddress().getPort())) {
             engine.applyDataForTest(Map.of("gates", Map.of()),
-                Map.of("experiments", Map.of("pricing_test", exp), "universes", Map.of()));
+                Map.of("experiments", Map.of("pricing_test", exp),
+                    "universes", Map.of("universe_pricing", java.util.Collections.singletonMap("holdout_range", null))));
             Shipeasy.useEngineForTest(engine, Shipeasy.IDENTITY);
 
-            new Client(Map.of("user_id", "user_beta")).logExposure("pricing_test");
+            Assignment a = new Client(Map.of("user_id", "user_beta")).universe("universe_pricing").assign();
+            assertTrue(a.enrolled());
 
             assertTrue(received.await(5, TimeUnit.SECONDS), "no /collect POST received");
             Map<String, Object> root = mapper.readValue(body.get(), Map.class);

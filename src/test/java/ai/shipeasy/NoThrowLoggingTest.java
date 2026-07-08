@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -81,7 +82,7 @@ class NoThrowLoggingTest {
         assertFalse(client.getFlag("some_gate"));
     }
 
-    // Experiment read fails safe to a not-enrolled control result.
+    // Experiment read (universe assign) fails safe to a not-enrolled result.
     @Test
     void experimentReadFailsSafeToControl() {
         // "experiments" is a String, not a Map -> internal cast throws.
@@ -90,12 +91,12 @@ class NoThrowLoggingTest {
         Shipeasy.useEngineForTest(e, null);
 
         Client client = new Client(Map.of("user_id", "u_1"));
-        ExperimentResult r = assertDoesNotThrow(
-            () -> client.getExperiment("exp_x", Map.of("k", "v")));
-        assertNotNull(r);
-        assertFalse(r.inExperiment);
-        assertEquals("control", r.group);
-        assertEquals(Map.of("k", "v"), r.params);
+        Assignment a = assertDoesNotThrow(
+            () -> client.universe("u").assign());
+        assertNotNull(a);
+        assertFalse(a.enrolled());
+        assertNull(a.group());
+        assertEquals("v", a.get("k", "v"));
     }
 
     // (b) LogLevel SILENT mutes the SDK's diagnostics; WARN emits them.

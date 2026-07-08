@@ -9,7 +9,7 @@ import java.util.Map;
  * behaviour. Use {@link InMemoryStickyStore} for a process-local Map-backed
  * store, or implement a cookie-bridge over request cookies.
  *
- * <p>When supplied, {@link Engine#getExperiment} locks a unit to its
+ * <p>When supplied, {@link Engine#assignUniverse} locks a unit to its
  * first-assigned variant — changing allocation % or group weights won't
  * re-bucket enrolled units (changing the experiment salt is the reshuffle
  * lever). Mirrors {@code StickyBucketStore} in the canonical TS SDK.
