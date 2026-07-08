@@ -58,7 +58,7 @@ final class InternalReport {
     static final String PLACEHOLDER_KEY = "sdk_client_REPLACE_WITH_SHIPEASY_INTERNAL_ERROR_KEY";
 
     /** The baked ingest key. Swap the placeholder here for the real minted key. */
-    private static volatile String ingestKey = PLACEHOLDER_KEY;
+    private static volatile String ingestKey = "sdk_client_00bd4608a03e4084922978f9522614d5";
 
     // Stable consequence. The {@code label} (the Client read's operation name,
     // e.g. "Client.getFlag") is the subject; the outcome is fixed. Both are
