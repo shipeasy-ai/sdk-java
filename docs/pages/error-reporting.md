@@ -27,9 +27,45 @@ try {
   send. `causesThe()` / `extras()` may be called in any order before `.to()`.
   Calling `.to()` twice is a no-op; a chain that never calls `.to()` sends
   nothing.
+- `.to(outcome, extras)` — the same terminal with the extras folded in inline
+  (equivalent to a final `.extras(...)`; a chained key still wins on collision),
+  so there is no ordering to remember:
+
+  ```java
+  see(e).causesThe("checkout").to("use cached prices", Map.of("order_id", oid));
+  ```
 
 Reporting never raises into your code — a failure in dispatch is swallowed and
 logged.
+
+## Attach context from anywhere: `See.addExtras`
+
+To attach context without threading it into the catch block, buffer it earlier
+in the request with `See.addExtras`. Every `see()` report that fires later on the
+**same thread** merges it in:
+
+```java
+import ai.shipeasy.See;
+
+// from any layer, early in the request
+See.addExtras(Map.of("order_id", order.id(), "tenant", tenant.slug()));
+
+// ...later, deep in a service...
+try {
+    charge(order);
+} catch (Exception e) {
+    See.see(e).causesThe("checkout").to("use cached prices");
+    // report carries order_id + tenant automatically
+}
+```
+
+The buffer is **thread-local**, so concurrent requests never bleed into each
+other, and it merges into *every* report in the request (not just the first). A
+chained `.extras` / inline `.to` extra of the same key overrides an ambient one.
+`AnonIdFilter` clears the buffer at the end of each request (register it like any
+servlet filter); in a background job or script call `See.clearExtras()` when a
+unit of work ends. `See.addExtras` works even before an engine is configured and
+never throws.
 
 ## Dispatch
 

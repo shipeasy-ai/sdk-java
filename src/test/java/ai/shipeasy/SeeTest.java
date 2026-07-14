@@ -51,6 +51,8 @@ class SeeTest {
     @AfterEach
     void stop() {
         if (server != null) server.stop(0);
+        // Never leak the ambient buffer into the next test on this thread.
+        See.clearExtras();
     }
 
     private String baseUrl() {
@@ -139,6 +141,88 @@ class SeeTest {
             if (v instanceof String) {
                 assertTrue(((String) v).length() <= 200, "string values truncated to 200");
             }
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void inlineExtrasOnToMergeOverPriorExtras() throws Exception {
+        try (Engine c = new Engine("srv_key", baseUrl())) {
+            Map<String, Object> first = new HashMap<>();
+            first.put("order_id", "o1");
+            first.put("stage", "early");
+            Map<String, Object> inline = new HashMap<>();
+            inline.put("stage", "late"); // overrides the prior .extras value
+            inline.put("attempt", 2);
+            c.see(new RuntimeException("x"))
+                .causesThe("checkout")
+                .extras(first)
+                .to("use cached prices", inline);
+            Map<String, Object> ev = awaitEvent();
+            Map<String, Object> out = (Map<String, Object>) ev.get("extras");
+            assertEquals("o1", out.get("order_id"));
+            assertEquals("late", out.get("stage"), "inline .to extras must win over a prior .extras");
+            assertEquals(2, out.get("attempt"));
+            assertEquals("use cached prices", ev.get("outcome"));
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void ambientExtrasMergeIntoLaterReport() throws Exception {
+        try (Engine c = new Engine("srv_key", baseUrl())) {
+            See.addExtras(Map.of("order_id", "o9", "tenant", "acme"));
+            c.see(new RuntimeException("x")).causesThe("checkout").to("use cached prices");
+            Map<String, Object> ev = awaitEvent();
+            Map<String, Object> out = (Map<String, Object>) ev.get("extras");
+            assertEquals("o9", out.get("order_id"));
+            assertEquals("acme", out.get("tenant"));
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void ambientExtrasAttachToMultipleReports() throws Exception {
+        try (Engine c = new Engine("srv_key", baseUrl())) {
+            See.addExtras(Map.of("tenant", "acme"));
+
+            c.see(new RuntimeException("a")).causesThe("checkout").to("first");
+            Map<String, Object> ev1 = awaitEvent();
+            assertEquals("acme", ((Map<String, Object>) ev1.get("extras")).get("tenant"));
+
+            // Reset the capture latch for the second report.
+            received = new java.util.concurrent.CountDownLatch(1);
+            c.see(new RuntimeException("b")).causesThe("search").to("second");
+            Map<String, Object> ev2 = awaitEvent();
+            assertEquals("acme", ((Map<String, Object>) ev2.get("extras")).get("tenant"),
+                "ambient extras must attach to every report, not just the first");
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void chainedExtrasOverrideAmbientKey() throws Exception {
+        try (Engine c = new Engine("srv_key", baseUrl())) {
+            See.addExtras(Map.of("stage", "ambient", "tenant", "acme"));
+            c.see(new RuntimeException("x"))
+                .causesThe("checkout")
+                .extras(Map.of("stage", "chained"))
+                .to("use cached prices");
+            Map<String, Object> ev = awaitEvent();
+            Map<String, Object> out = (Map<String, Object>) ev.get("extras");
+            assertEquals("chained", out.get("stage"), "chained extras win over an ambient key");
+            assertEquals("acme", out.get("tenant"), "non-colliding ambient key still attaches");
+        }
+    }
+
+    @Test
+    void clearExtrasEmptiesTheBuffer() throws Exception {
+        try (Engine c = new Engine("srv_key", baseUrl())) {
+            See.addExtras(Map.of("order_id", "o9"));
+            See.clearExtras();
+            c.see(new RuntimeException("x")).causesThe("checkout").to("use cached prices");
+            Map<String, Object> ev = awaitEvent();
+            assertFalse(ev.containsKey("extras"), "cleared buffer must not attach to a later report");
         }
     }
 

@@ -56,7 +56,10 @@ public final class AnonIdFilter implements Filter {
         try {
             chain.doFilter(request, response);
         } finally {
+            // Don't leak the id — or any ambient see() extras — onto the next
+            // request handled by this pooled thread.
             AnonId.clear();
+            SeeExtras.clear();
         }
     }
 

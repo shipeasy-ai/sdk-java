@@ -27,8 +27,36 @@ import static ai.shipeasy.See.see;
 try {
     charge(order);
 } catch (Exception e) {
-    // .extras(map)         structured fields attached to the report
+    // .extras(map)         structured fields attached to the report; call it
+    //                      BEFORE .to, or pass extras inline as .to(outcome, map).
+    //                      (A stray .extras AFTER .to is a no-op — .to returns void.)
     see(e).causesThe("checkout").extras(Map.of("order_id", oid)).to("use cached prices");
+
+    // equivalent — extras folded into the terminal, no ordering to remember:
+    see(e).causesThe("checkout").to("use cached prices", Map.of("order_id", oid));
+}
+```
+
+### Attach context from anywhere with `See.addExtras(...)`
+
+```java
+import static ai.shipeasy.See.see;
+import ai.shipeasy.See;
+
+// Buffer extras earlier in the request — from any layer, not just the catch.
+// Every see() report that fires LATER on the same thread carries them, so you
+// don't have to thread context down into the catch site. Thread-local, so
+// concurrent requests never mix; AnonIdFilter clears it per request (register it
+// like any servlet filter — outside a servlet request call See.clearExtras()).
+See.addExtras(Map.of("order_id", order.id(), "tenant", tenant.slug()));
+
+// ...deep in a service, later in the same request...
+try {
+    charge(order);
+} catch (Exception e) {
+    // report carries order_id + tenant automatically; a chained .extras / inline
+    // .to extra of the same key wins over the ambient one.
+    see(e).causesThe("checkout").to("use cached prices");
 }
 ```
 

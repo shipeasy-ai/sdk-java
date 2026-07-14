@@ -70,13 +70,16 @@ Reference:
 ## Experiments + track (Client-only, end to end)
 
 Experiments are read by **universe** (a mutual-exclusion pool — the unit lands in
-<=1 experiment). `assign()` auto-logs one deduped exposure when enrolled.
+<=1 experiment). `assign()` is side-effect free; the single deduped exposure
+fires **on read** — the first `exp.get(...)`. Use `exp.peek(...)` to read without
+logging an exposure.
 
 ```java
 Client c = new Client(myUser);                             // construct once per callsite
 Assignment exp = c.universe("hero_cta").assign();          // <=1 experiment in the universe
 if (exp.enrolled()) { /* exp.group() is the variant; read params with exp.get(...) */ }
-String label = (String) exp.get("primary_label", "Sign up"); // variant ?? universe default ?? fallback
+String label = (String) exp.get("primary_label", "Sign up"); // variant ?? universe default ?? fallback; first get() logs the exposure
+String peeked = (String) exp.peek("primary_label", "Sign up"); // same read, no exposure
 
 c.track("purchase", Map.of("amount", 49));                 // conversion for the bound user
 ```
@@ -96,7 +99,11 @@ try {
 }
 ```
 
-`.to(outcome)` is the terminal (fire-and-forget POST). Use
+`.to(outcome)` is the terminal (fire-and-forget POST); fold extras in inline as
+`.to(outcome, Map.of(...))` to skip the ordering. Buffer per-request context from
+any layer with `See.addExtras(Map.of("order_id", id))` — every later `see()` on
+the same thread carries it (thread-local; `AnonIdFilter` clears it per request,
+else call `See.clearExtras()`). Use
 `controlFlowException(e).because("...")` to mark expected control flow (reports
 nothing); `violation("name")...to("...")` for non-throwable problems. Reference:
 <https://shipeasy-ai.github.io/sdk-java/pages/error-reporting.md> · snippet

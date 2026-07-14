@@ -108,6 +108,38 @@ public final class See {
         return new ControlFlowChain(e);
     }
 
+    // ---- Ambient per-request extras -------------------------------------
+
+    /**
+     * Buffer extras that merge into EVERY {@code see()} report firing later in
+     * this thread — attach context (order id, tenant, route) from anywhere
+     * without threading it into the catch block:
+     *
+     * <pre>{@code
+     * See.addExtras(Map.of("order_id", order.id(), "tenant", tenant.slug()));
+     * // ...later, deep in a service...
+     * } catch (Exception e) {
+     *     See.see(e).causesThe("checkout").to("use cached prices");
+     *     // ^ report carries order_id + tenant automatically
+     * }
+     * }</pre>
+     *
+     * <p>The buffer is <b>thread-local</b>, so concurrent requests never bleed,
+     * and it merges into <em>every</em> report in scope. A chained
+     * {@code .extras} / {@code .to} extra of the same key overrides an ambient
+     * one. {@link AnonIdFilter} clears it per request; outside a servlet request
+     * call {@link #clearExtras()} when a unit of work ends. Works with no engine
+     * configured (it only writes the buffer); never throws.
+     */
+    public static void addExtras(Map<String, Object> extras) {
+        SeeExtras.add(extras);
+    }
+
+    /** Drop the ambient extras buffer for the current thread. Never throws. */
+    public static void clearExtras() {
+        SeeExtras.clear();
+    }
+
     // ---- Shared helpers (package-private) ----
 
     static String truncate(String s, int limit) {

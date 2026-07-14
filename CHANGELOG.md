@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.17.0 — 2026-07-13
+
+### see(): inline extras on `.to`, ambient per-request extras
+
+- **`to(outcome, extras)`** — the terminal now takes the extras inline, e.g.
+  `see(e).causesThe("checkout").to("use cached prices", Map.of("order_id", oid))`.
+  Equivalent to a final `.extras(...)`; folds over any earlier `.extras` (later
+  wins). So there is no ordering to remember. `to(outcome)` is unchanged.
+- **`See.addExtras(Map)` / `See.clearExtras()`** — an ambient per-request extras
+  buffer. Call `See.addExtras(Map.of("order_id", id, "tenant", t))` from anywhere
+  (any layer, not just the catch block) and every `see()` report that fires later
+  on the same thread merges it in. The buffer is **thread-local** (concurrent
+  requests never bleed), attaches to *every* report in scope, and is cleared per
+  request by `AnonIdFilter` (register it like any servlet filter; outside a
+  servlet request call `See.clearExtras()` at the end of a unit of work). A
+  chained `.extras` / inline `.to` extra overrides an ambient key of the same
+  name; ambient extras are sanitized and private-attribute-stripped like any
+  other. `See.addExtras` works even before an engine is configured — it only
+  writes the buffer — and never throws.
+
+## 0.16.0 — 2026-07-08
+
+### Experiment exposure fires on read
+
+`universe(name).assign()` is now **side-effect free**. The single exposure is
+logged **on read** — the first time an enrolled unit's param is read via
+`Assignment.get(...)` — instead of eagerly at `assign()` time. An assignment that
+is computed but never read logs nothing.
+
+- **New `peek(...)` opt-out.** `Assignment.peek(String field, Object fallback)`
+  and the typed `<T> T peek(String field, Class<T> type, T fallback)` read a
+  resolved param **without** logging an exposure — the read-only counterparts to
+  the `get(...)` overloads. Use them from background/analytics paths that must not
+  count as an exposure.
+- **Durable dedup.** Exposure is still deduped per process and now also durably
+  per `(unit, experiment, group)` server-side, so repeated reads never
+  double-count.
+
+**BEHAVIOUR CHANGE.** Code that called `assign()` and relied on the exposure
+firing without ever reading a param will no longer log one — read a param with
+`get(...)` (or keep the existing read) to log it.
+
+### Durable forced-but-gated overrides
+
+The experiment resolver now honours durable **ID overrides** and **cohort/gate
+overrides** delivered via the experiments blob. A matched override pins the unit
+to its group **only if** the unit still passes targeting and isn't held out (it
+is forced but still gated); ID overrides beat cohort overrides. This is net-new
+resolution behaviour consumed from the blob — there is no new user-facing SDK
+API. Running experiments are byte-identical (the new ordering rides
+`hash_version: 3`).
+
 ## 0.15.0 — 2026-07-08
 
 ### Environment-derived network & telemetry (egress) defaults
