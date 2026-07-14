@@ -81,18 +81,37 @@ class LogExposureTest {
     }
 
     @Test
-    void enrolledUserPostsOneExposure() throws Exception {
+    void enrolledUserPostsOneExposureOnFirstRead() throws Exception {
         try (Engine c = new Engine("k", baseUrl())) {
             c.applyDataForTest(Map.of("gates", Map.of()), runningExps());
             Assignment a = c.universe("universe_pricing").assign(Map.of("user_id", "user_beta"));
             assertEquals("pricing_test", a.name());
             assertEquals("control", a.group());
+            // assign() alone is side-effect free — the exposure fires on read.
+            assertEquals(false, received.await(500, TimeUnit.MILLISECONDS),
+                "assign() alone must not POST an exposure");
+            a.get("anything", null); // first read → the single exposure
             Map<String, Object> event = awaitEvent();
             assertEquals("exposure", event.get("type"));
             assertEquals("pricing_test", event.get("experiment"));
             assertEquals("control", event.get("group"));
             assertEquals("user_beta", event.get("user_id"));
             assertNotNull(event.get("ts"));
+        }
+    }
+
+    // peek() reads a param WITHOUT logging an exposure (on-read opt-out).
+    @Test
+    void peekReadDoesNotPostExposure() throws Exception {
+        try (Engine c = new Engine("k", baseUrl())) {
+            c.applyDataForTest(Map.of("gates", Map.of()), runningExps());
+            Assignment a = c.universe("universe_pricing").assign(Map.of("user_id", "user_beta"));
+            a.peek("anything", null);
+            assertEquals(false, received.await(500, TimeUnit.MILLISECONDS),
+                "peek() must not POST an exposure");
+            a.get("anything", null); // a real read still logs
+            Map<String, Object> event = awaitEvent();
+            assertEquals("exposure", event.get("type"));
         }
     }
 
@@ -111,37 +130,38 @@ class LogExposureTest {
                     "universes", Map.of("universe_pricing", java.util.Collections.singletonMap("holdout_range", null))));
             Assignment a = c.universe("universe_pricing").assign(Map.of("user_id", "user_beta"));
             assertEquals(false, a.enrolled());
+            a.get("anything", null); // not enrolled → no callback wired → no POST
             // Give the async path a moment; nothing should arrive.
             assertEquals(false, received.await(1, TimeUnit.SECONDS),
                 "no exposure must be POSTed for an unenrolled user");
         }
     }
 
-    // A second assign for the same (unit, experiment, group) is deduped — only
+    // A second read for the same (unit, experiment, group) is deduped — only
     // one exposure is POSTed per process.
     @Test
-    void repeatedAssignDedupesExposure() throws Exception {
+    void repeatedReadDedupesExposure() throws Exception {
         try (Engine c = new Engine("k", baseUrl())) {
             c.applyDataForTest(Map.of("gates", Map.of()), runningExps());
-            c.universe("universe_pricing").assign(Map.of("user_id", "user_beta"));
+            c.universe("universe_pricing").assign(Map.of("user_id", "user_beta")).get("x", null);
             // First exposure lands and drops the latch to 0.
             Map<String, Object> event = awaitEvent();
             assertEquals("exposure", event.get("type"));
-            // A second assign for the same (unit, exp, group) must NOT re-POST.
+            // A second assign+read for the same (unit, exp, group) must NOT re-POST.
             received = new CountDownLatch(1);
-            c.universe("universe_pricing").assign(Map.of("user_id", "user_beta"));
+            c.universe("universe_pricing").assign(Map.of("user_id", "user_beta")).get("x", null);
             assertEquals(false, received.await(1, TimeUnit.SECONDS),
-                "a repeated assign must not POST a second exposure");
+                "a repeated read must not POST a second exposure");
         }
     }
 
-    // assign on a test-mode client is a no-op for exposure (never touches network).
+    // read on a test-mode client is a no-op for exposure (never touches network).
     @Test
     void assignNoOpExposureInTestMode() {
         try (Engine c = Engine.forTesting()) {
             c.overrideExperiment("pricing_test", "treatment", Map.of());
             // No blob -> no candidate -> not enrolled; must not throw / not POST.
-            c.universe("universe_pricing").assign(Map.of("user_id", "user_beta"));
+            c.universe("universe_pricing").assign(Map.of("user_id", "user_beta")).get("x", null);
         }
     }
 }

@@ -2,20 +2,26 @@
 
 ## Exposure logging
 
-Exposure is **automatic**: `universe(name).assign()` POSTs one
-`{type:"exposure", experiment, group, user_id, ts}` event to `/collect` when the
-unit is enrolled — there is no manual `logExposure`. Just assign at the point you
-present the experiment:
+Exposure is **automatic** but fires **on read**, not at `assign()` time:
+`assign()` is side-effect free, and the first `get(...)` on an enrolled
+assignment POSTs one `{type:"exposure", experiment, group, user_id, ts}` event to
+`/collect`. An assignment that is computed but never read logs nothing. There is
+no manual `logExposure`. Just assign and read at the point you present the
+experiment:
 
 ```java
 // Assumes Shipeasy.configure(...) ran at startup — see Installation.
 Client c = new Client(Map.of("user_id", "u_123", "plan", "pro")); // construct once per callsite
-Assignment a = c.universe("hero_cta").assign(); // auto-logs one exposure when enrolled
+Assignment a = c.universe("hero_cta").assign();  // side-effect free
+String label = (String) a.get("primary_label", "Sign up"); // first get() logs the exposure
+String peeked = (String) a.peek("primary_label", "Sign up"); // read WITHOUT logging an exposure
 ```
 
-The exposure is **deduped per process**: repeated `assign()` calls for the same
-`(unit, experiment, group)` POST only one exposure. No-op in test/snapshot mode
-or when the unit isn't enrolled.
+The exposure is **deduped per process** and, durably, per
+`(unit, experiment, group)` server-side: repeated reads for the same
+`(unit, experiment, group)` POST only one exposure. Use `peek(...)` to read a
+param without logging at all. No-op in test/snapshot mode or when the unit isn't
+enrolled.
 
 ## Private attributes
 

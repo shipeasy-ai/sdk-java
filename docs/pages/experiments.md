@@ -2,9 +2,10 @@
 
 Experiments are read by **universe**. A universe is a mutual-exclusion pool: a
 unit lands in **at most one** experiment in it. `assign()` picks that experiment
-(if any), returns the assigned group plus its resolved parameters, and auto-logs
-a single (deduped) exposure. You read parameters with
-`assign().get(field, fallback)` and record a conversion with `track`.
+(if any) and returns the assigned group plus its resolved parameters — it is
+side-effect free. The single (deduped) exposure fires **on read**: the first time
+you read a param via `assign().get(field, fallback)`. Record a conversion with
+`track`.
 
 ## Read an experiment
 
@@ -30,13 +31,20 @@ The user is bound at construction, so `assign()` takes no argument.
 
 ```java
 public final class Assignment {
-    public String  name();                       // the experiment landed in, or null when not enrolled
-    public String  group();                       // the assigned variant, or null when not enrolled
-    public boolean enrolled();                    // == (group() != null)
-    public Object  get(String field, Object fb);  // variant ?? universe default ?? fallback
+    public String  name();                        // the experiment landed in, or null when not enrolled
+    public String  group();                        // the assigned variant, or null when not enrolled
+    public boolean enrolled();                     // == (group() != null); reading it logs nothing
+    public Object  get(String field, Object fb);   // variant ?? universe default ?? fallback (first read logs the exposure)
     public <T> T   get(String field, Class<T> type, T fb); // typed variant of get(...)
+    public Object  peek(String field, Object fb);  // same read, but NEVER logs an exposure
+    public <T> T   peek(String field, Class<T> type, T fb); // typed variant of peek(...)
 }
 ```
+
+The first `get(...)` on an enrolled assignment logs its single (deduped)
+exposure; `name()`, `group()` and `enrolled()` log nothing. Use `peek(...)` to
+read a param **without** logging an exposure — the read-only counterpart to
+`get(...)`.
 
 When the unit isn't enrolled (targeting/holdout/allocation), `enrolled()` is
 `false`, `group()` and `name()` are `null`, and `get(field, fallback)` returns
@@ -48,9 +56,11 @@ Assignment cta = c.universe("hero_cta").assign();
 if (cta.enrolled()) {
     // cta.group() is the variant, e.g. "treatment"
 }
-String label = (String) cta.get("primary_label", "Sign up"); // never throws
+String label = (String) cta.get("primary_label", "Sign up"); // never throws; first get() logs the exposure
 // Or typed, with a fallback on a type mismatch:
 String typed = cta.get("primary_label", String.class, "Sign up");
+// Read without logging an exposure (e.g. from a background/analytics path):
+String peeked = cta.peek("primary_label", String.class, "Sign up");
 ```
 
 ## Track conversions
@@ -92,7 +102,9 @@ for (Map<String, Object> user : users) {
 
 ## Exposure logging
 
-`assign()` auto-logs a single (deduped) exposure when the unit is enrolled — the
-server no longer exposes a manual `logExposure`. Repeated `assign()` calls for
-the same `(unit, experiment, group)` in one process POST only one exposure. See
-[Advanced → exposure logging](advanced.md).
+Exposure fires **on read**, not at `assign()` time: the first `get(...)` on an
+enrolled assignment POSTs one (deduped) exposure — the server no longer exposes a
+manual `logExposure`. An assignment that is computed but never read logs nothing.
+Reach for `peek(...)` to read a param without logging. The exposure is deduped
+per process, and durably per `(unit, experiment, group)` server-side, so repeated
+reads never double-count. See [Advanced → exposure logging](advanced.md).

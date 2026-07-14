@@ -32,7 +32,7 @@ public final class Engine implements AutoCloseable {
     private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
-    public static final String VERSION = "0.15.0";
+    public static final String VERSION = "0.17.0";
 
     private final String apiKey;
     private final String baseUrl;
@@ -620,8 +620,16 @@ public final class Engine implements AutoCloseable {
             Map<String, Object> exp = (Map<String, Object>) e.getValue();
             Eval.ExpStanding s = evalExperiment(name, exp, u);
             if (s.state == Eval.State.GROUP) {
-                postExposure(u, name, s.group);
-                return new Assignment(name, s.group, s.params == null ? Map.of() : s.params);
+                final String expName = name;
+                final String group = s.group;
+                // On-read exposure (spec step 7): defer the single exposure to
+                // the first param read via the callback, instead of firing it
+                // here at assign time.
+                return new Assignment(
+                        expName,
+                        group,
+                        s.params == null ? Map.of() : s.params,
+                        () -> postExposure(u, expName, group));
             }
             // "holdout"/"out": try the next candidate — under pooling only one
             // slice can match, so the loop naturally lands on the winner.

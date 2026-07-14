@@ -207,6 +207,37 @@ final class Eval {
     }
 
     /**
+     * Resolve a forced override group for {@code uid} (spec step 1): ID overrides
+     * (tier 1) beat cohort/GK overrides (tier 2); within cohort overrides the first
+     * (pre-sorted by priority) gate that passes wins. Returns the forced group name
+     * or {@code null}. The caller applies eligibility + group-existence
+     * (forced-but-gated). Mirrors {@code @shipeasy/core} resolveForcedGroup.
+     */
+    @SuppressWarnings("unchecked")
+    static String resolveForcedGroup(
+            Map<String, Object> exp, String uid, Map<String, Object> flagsBlob, Map<String, Object> user) {
+        Object idov = exp.get("idOverrides");
+        if (idov instanceof Map) {
+            Object byId = ((Map<String, Object>) idov).get(uid);
+            if (byId instanceof String && !((String) byId).isEmpty()) return (String) byId;
+        }
+        Object cohorts = exp.get("cohortOverrides");
+        if (cohorts instanceof List) {
+            for (Object o : (List<Object>) cohorts) {
+                if (o instanceof Map) {
+                    Map<String, Object> co = (Map<String, Object>) o;
+                    String gate = (String) co.get("gate");
+                    if (gate != null && evalGateByName(flagsBlob, gate, user)) {
+                        Object grp = co.get("group");
+                        return grp == null ? null : (String) grp;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * Targeting → universe holdout → holdout gate → sticky → allocation (pooled or
      * legacy) → weighted group split. The single local mirror of @shipeasy/core's
      * {@code classifyExperiment} (mirror {@code classifyExperimentLocal} in the TS
@@ -265,11 +296,30 @@ final class Eval {
         String salt = (String) exp.getOrDefault("salt", "");
         List<Map<String, Object>> groups = (List<Map<String, Object>>) exp.getOrDefault("groups", List.of());
 
+        String salt8 = salt.length() >= 8 ? salt.substring(0, 8) : salt;
+
+        // Durable overrides (spec step 1, forced-but-gated). Reached only after the
+        // unit passes targeting and is not held out, so an override may now pin the
+        // group — bypassing allocation + the weighted pick but NOT the gates above.
+        // ID overrides (tier 1) beat cohort/GK overrides (tier 2); a forced group
+        // that no longer exists falls through to normal allocation. No-op when
+        // unconfigured, so v1/v2 stay byte-identical. Mirrors @shipeasy/core.
+        String forced = resolveForcedGroup(exp, uid, flagsBlob, user);
+        if (forced != null) {
+            for (Map<String, Object> g : groups) {
+                if (forced.equals(g.get("name"))) {
+                    if (store != null && expName != null) {
+                        store.set(uid, expName, new StickyEntry(forced, salt8));
+                    }
+                    return ExpStanding.group(forced, mergeParams(paramDefaults, g.get("params")));
+                }
+            }
+        }
+
         // Sticky short-circuit (doc 20 §2): after the holdout, before allocation.
         // An enrolled unit whose stored salt prefix still matches skips the
         // allocation gate (a shrinking allocation keeps it in) and returns the
         // stored group without re-running the pick.
-        String salt8 = salt.length() >= 8 ? salt.substring(0, 8) : salt;
         if (store != null && expName != null) {
             Map<String, StickyEntry> unitEntries = store.get(uid);
             StickyEntry entry = unitEntries == null ? null : unitEntries.get(expName);

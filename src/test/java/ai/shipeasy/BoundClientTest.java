@@ -216,6 +216,7 @@ class BoundClientTest {
 
             Assignment a = new Client(Map.of("user_id", "user_beta")).universe("universe_pricing").assign();
             assertTrue(a.enrolled());
+            a.get("anything", null); // on-read exposure: the first read fires it
 
             assertTrue(received.await(5, TimeUnit.SECONDS), "no /collect POST received");
             Map<String, Object> root = mapper.readValue(body.get(), Map.class);

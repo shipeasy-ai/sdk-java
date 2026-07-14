@@ -15,8 +15,10 @@ Client client = new Client(Map.of("user_id", "u_123"));
 //   .name()    — the experiment the unit landed in, or null when not enrolled
 //   .group()   — the assigned variant, or null when not enrolled
 //   .enrolled()— == (group() != null)
-//   .get(field, fallback) — variant override ?? universe default ?? fallback
-// assign() takes no arg (user bound at construction) and auto-logs one exposure.
+//   .get(field, fallback) — variant override ?? universe default ?? fallback (first get() logs one exposure)
+//   .peek(field, fallback) — same read, but NEVER logs an exposure
+// assign() takes no arg (user bound at construction) and is side-effect free;
+// the single deduped exposure fires on the first .get(...) read.
 Assignment exp = client.universe("{{EXPERIMENT_KEY}}").assign();
 
 String label = (String) exp.get("primary_label", "Sign up"); // always safe — falls back when not enrolled
