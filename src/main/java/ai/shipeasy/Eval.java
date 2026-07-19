@@ -88,6 +88,29 @@ final class Eval {
         if (gate == null) return false;
         if (enabled(gate.get("killswitch"))) return false;
         if (!enabled(gate.get("enabled"))) return false;
+
+        // Modern gatekeepers ship an ordered {@code stack}; evaluate it
+        // top-to-bottom and pass on the first entry whose rules match AND whose
+        // bucket hits. This is the canonical model — the flat {@code rules} /
+        // {@code rolloutPct} below are a lossy approximation (a whitelist
+        // condition at 100% collapses to {@code rolloutPct: 0} once the public
+        // rollout is 0%, which the flat path would wrongly read as "never").
+        // Mirrors {@code @shipeasy/core} evalGatekeeper — keep the two in sync.
+        Object stackObj = gate.get("stack");
+        if (stackObj instanceof List) {
+            List<Object> stack = (List<Object>) stackObj;
+            if (!stack.isEmpty()) {
+                String fallbackSalt = (String) gate.getOrDefault("salt", "");
+                long now = System.currentTimeMillis();
+                for (Object e : stack) {
+                    if (e instanceof Map && evalStackEntry((Map<String, Object>) e, user, fallbackSalt, now)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+
         List<Map<String, Object>> rules = (List<Map<String, Object>>) gate.get("rules");
         if (rules != null) for (Map<String, Object> r : rules) if (!matchRule(r, user)) return false;
         String uid = userId(user);
@@ -102,6 +125,102 @@ final class Eval {
         }
         String salt = (String) gate.getOrDefault("salt", "");
         return Murmur3.bucket(salt + ":" + uid, 10000) < rolloutPct.intValue();
+    }
+
+    // ── Gatekeeper (stacked) evaluation ─────────────────────────────────────
+    //
+    // One entry in a gate's ordered gatekeeper stack. A {@code condition} gates
+    // on its rules then buckets at its own rollout (absent rolloutPct means
+    // 100%: every match passes); a {@code rollout} buckets everyone who reached
+    // it (absent means 0%). A rollout % may RAMP linearly over time. Mirrors
+    // {@code @shipeasy/core} evalStackEntry/effectivePct/bucketHit — keep in sync
+    // (see experiment-platform/04-evaluation.md).
+
+    private static int clampPct(int n) {
+        if (n < 0) return 0;
+        if (n > 10000) return 10000;
+        return n;
+    }
+
+    /**
+     * Effective rollout % (basis points) for a stack entry at time {@code now}.
+     * A condition with no explicit rolloutPct defaults to 100%; a rollout to 0%.
+     * A {@code ramp} linearly interpolates {@code from}..{@code to} over
+     * [{@code startAt}, {@code startAt+durationMs}] against the wall-clock
+     * {@code now} (epoch ms). Integer division truncates toward zero with a
+     * 64-bit intermediate for {@code delta*elapsed} — the cross-SDK contract.
+     */
+    @SuppressWarnings("unchecked")
+    static int effectivePct(Map<String, Object> entry, long now) {
+        boolean isCondition = "condition".equals(entry.get("type"));
+        Number rp = (Number) entry.get("rolloutPct");
+        int base = rp != null ? rp.intValue() : (isCondition ? 10000 : 0);
+
+        Object rampObj = entry.get("ramp");
+        if (!(rampObj instanceof Map)) return base;
+        Map<String, Object> ramp = (Map<String, Object>) rampObj;
+        int from = ((Number) ramp.getOrDefault("from", 0)).intValue();
+        int to = ((Number) ramp.getOrDefault("to", 0)).intValue();
+        long startAt = ((Number) ramp.getOrDefault("startAt", 0)).longValue();
+        long durationMs = ((Number) ramp.getOrDefault("durationMs", 0)).longValue();
+
+        if (now <= startAt) return from;
+        if (durationMs <= 0 || now >= startAt + durationMs) return to;
+        long delta = (long) to - from; // signed
+        long elapsed = now - startAt;
+        int pct = from + (int) (delta * elapsed / durationMs);
+        return clampPct(pct);
+    }
+
+    /**
+     * Hash the caller into [0,10000) and test against {@code pct}. No-unit
+     * contract (experiment-platform/18): a fully-rolled bucket is answerable
+     * without a unit id (on for everyone); a fractional one needs a stable unit,
+     * so it is off. A pct of 0 or less is off for everyone; a pct of 10000 or
+     * more is on for everyone with a unit.
+     */
+    static boolean bucketHit(int pct, String uid, String salt) {
+        if (pct <= 0) return false;
+        if (uid == null || uid.isEmpty()) return pct >= 10000;
+        if (pct >= 10000) return true;
+        return Murmur3.bucket(salt + ":" + uid, 10000) < pct;
+    }
+
+    /**
+     * Evaluate one stack entry. A {@code condition} passes when its rules match
+     * (all, or any when {@code pass=="any"}) AND the caller's bucket hits its
+     * effective rollout; a {@code rollout} passes when the bucket hits. The
+     * condition's default salt is its own {@code id} (so each step buckets
+     * independently); a rollout falls back to the gate salt. Mirrors
+     * {@code @shipeasy/core} evalStackEntry.
+     */
+    @SuppressWarnings("unchecked")
+    static boolean evalStackEntry(Map<String, Object> entry, Map<String, Object> user, String fallbackSalt, long now) {
+        String entrySalt = (String) entry.get("salt");
+        String bucketBy = (String) entry.get("bucketBy");
+        String id = (String) entry.get("id");
+        if ("condition".equals(entry.get("type"))) {
+            List<Map<String, Object>> rules = (List<Map<String, Object>>) entry.get("rules");
+            if (rules == null || rules.isEmpty()) return false;
+            boolean any = "any".equals(entry.get("pass"));
+            boolean matched;
+            if (any) {
+                matched = false;
+                for (Map<String, Object> r : rules) if (matchRule(r, user)) { matched = true; break; }
+            } else {
+                matched = true;
+                for (Map<String, Object> r : rules) if (!matchRule(r, user)) { matched = false; break; }
+            }
+            if (!matched) return false;
+            // Rules matched — bucket at the per-condition rollout. A distinct
+            // default salt (the entry id) keeps each step's bucket independent.
+            String salt = entrySalt != null && !entrySalt.isEmpty()
+                    ? entrySalt : (id != null && !id.isEmpty() ? id : fallbackSalt);
+            return bucketHit(effectivePct(entry, now), pickIdentifier(user, bucketBy), salt);
+        }
+        // rollout — salt fallback is the gate salt so existing entries don't re-bucket.
+        String salt = entrySalt != null && !entrySalt.isEmpty() ? entrySalt : fallbackSalt;
+        return bucketHit(effectivePct(entry, now), pickIdentifier(user, bucketBy), salt);
     }
 
     static ExperimentResult evalExperiment(
