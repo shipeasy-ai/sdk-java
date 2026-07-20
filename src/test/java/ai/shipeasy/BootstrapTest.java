@@ -58,6 +58,39 @@ class BootstrapTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void bootstrapScriptTagCarriesIdentifiedUser() throws Exception {
+        Map<String, Object> user = Map.of(
+            "user_id", "u1", "email", "a@b.co", "anonymous_id", "anon-1");
+        String tag = client().bootstrapScriptTag(user, "anon-1");
+        assertTrue(tag.contains("data-anon-id=\"anon-1\""));
+
+        Matcher m = Pattern.compile("data-user=\"([^\"]*)\"").matcher(tag);
+        assertTrue(m.find(), "expected data-user attribute");
+        String decoded = m.group(1)
+            .replace("&quot;", "\"").replace("&amp;", "&").replace("&lt;", "<")
+            .replace("&gt;", ">").replace("&#39;", "'");
+        // Sorted keys, no anonymous_id.
+        assertEquals("{\"email\":\"a@b.co\",\"user_id\":\"u1\"}", decoded);
+        Map<String, Object> identity = new ObjectMapper().readValue(decoded, Map.class);
+        assertFalse(identity.containsKey("anonymous_id"));
+        assertEquals("u1", identity.get("user_id"));
+        assertEquals("a@b.co", identity.get("email"));
+    }
+
+    @Test
+    void bootstrapScriptTagOmitsUserWhenAnonymous() {
+        // Only an anonymous_id → no identified trait remains → no data-user.
+        String anonOnly = client().bootstrapScriptTag(Map.of("anonymous_id", "anon-1"), "anon-1");
+        assertFalse(anonOnly.contains("data-user"), "anon-only request must not carry data-user");
+        assertTrue(anonOnly.contains("data-anon-id=\"anon-1\""));
+
+        // Empty user → no data-user.
+        String empty = client().bootstrapScriptTag(Map.of());
+        assertFalse(empty.contains("data-user"), "empty user must not carry data-user");
+    }
+
+    @Test
     void i18nScriptTag() {
         String tag = client().i18nScriptTag("client_pub", "fr:prod");
         assertTrue(tag.contains("src=\"https://cdn.shipeasy.ai/sdk/i18n/loader.js\""));

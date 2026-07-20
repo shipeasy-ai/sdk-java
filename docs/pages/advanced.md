@@ -110,6 +110,17 @@ String head = Shipeasy.bootstrapScriptTag(user, anonId, "en:prod", null)
 Overloads let you omit the anon id, or pass `i18nProfile` / `baseUrl` (defaults
 to `https://cdn.shipeasy.ai`).
 
+### Identity coherence (no anon to identified flip)
+
+When the `user` you evaluate carries an identified attribute (a `user_id`,
+`email`, or any trait other than `anonymous_id`), the tag also emits a
+`data-user` attribute — the HTML-escaped JSON of those traits, with
+`anonymous_id` and null values dropped. The browser SDK reads it and adopts that
+server-known identity on first paint, so a Java backend with a JS frontend never
+shows the anonymous-then-identified flip (the same identity buckets flags on both
+sides). An anonymous request — only an `anonymous_id`, or an empty user — emits no
+`data-user`. See `experiment-platform/18-identity-bucketing.md`.
+
 ## Change listeners
 
 Register a listener that fires after a background poll applies **new** data (an

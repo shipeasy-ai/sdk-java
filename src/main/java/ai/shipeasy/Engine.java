@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledExecutorService;
@@ -32,7 +33,7 @@ public final class Engine implements AutoCloseable {
     private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
-    public static final String VERSION = "0.17.1";
+    public static final String VERSION = "0.18.0";
 
     private final String apiKey;
     private final String baseUrl;
@@ -751,6 +752,11 @@ public final class Engine implements AutoCloseable {
      * {@code se-bootstrap.js} reads its {@code data-*} attributes and hydrates
      * {@code window.__SE_BOOTSTRAP} (and writes the anon cookie). No SDK key is
      * embedded — the server key must never reach the browser.
+     *
+     * <p>When {@code user} carries an identified attribute (anything other than
+     * {@code anonymous_id}), the tag also emits {@code data-user} — the
+     * server-known identity the browser SDK adopts on first paint, killing the
+     * anon to identified flip. An anonymous request emits no {@code data-user}.
      */
     public String bootstrapScriptTag(Map<String, Object> user, String anonId, String i18nProfile, String baseUrl) {
         Map<String, Object> payload = evaluate(user);
@@ -766,6 +772,8 @@ public final class Engine implements AutoCloseable {
         sb.append(attr("data-i18n-profile", profile)).append(' ');
         sb.append(attr("data-api-url", base));
         if (anonId != null && !anonId.isEmpty()) sb.append(' ').append(attr("data-anon-id", anonId));
+        String dataUser = identityAttrs(user);
+        if (dataUser != null) sb.append(' ').append(attr("data-user", dataUser));
         sb.append("></script>");
         return sb.toString();
     }
@@ -800,6 +808,26 @@ public final class Engine implements AutoCloseable {
     private static String cdnBase(String override) {
         String base = (override == null || override.isEmpty()) ? DEFAULT_CDN_BASE : override;
         return base.replaceAll("/$", "");
+    }
+
+    /**
+     * The identity attributes to carry on the bootstrap tag as {@code data-user}:
+     * the same {@code user} the tag evaluates, minus its {@code anonymous_id} and
+     * any null values. Keys are sorted so the serialized JSON is deterministic.
+     * Returns {@code null} when no identified attribute remains (an anonymous
+     * request), so no {@code data-user} is emitted — the browser SDK never sees a
+     * spurious identity and there is no anon to identified flip on first paint.
+     */
+    private String identityAttrs(Map<String, Object> identity) {
+        if (identity == null || identity.isEmpty()) return null;
+        Map<String, Object> traits = new TreeMap<>();
+        for (Map.Entry<String, Object> e : identity.entrySet()) {
+            if ("anonymous_id".equals(e.getKey())) continue;
+            if (e.getValue() == null) continue;
+            traits.put(e.getKey(), e.getValue());
+        }
+        if (traits.isEmpty()) return null;
+        return json(traits);
     }
 
     private String json(Object v) {

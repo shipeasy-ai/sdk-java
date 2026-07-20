@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.18.0 — 2026-07-19
+
+### feat(bootstrap): carry the server-identified user on the SSR tag as `data-user`
+
+- `bootstrapScriptTag` now emits a `data-user` attribute — the HTML-escaped JSON
+  of the same `user` it evaluates, minus `anonymous_id` and any null values, with
+  keys sorted for a stable payload. It is emitted only when an identified
+  attribute remains; an anonymous request (only an `anonymous_id`, or an empty
+  user) carries no `data-user`. The browser SDK reads it and adopts the
+  server-known identity on first paint, killing the anon to identified flip for a
+  Java-backend + JS-frontend app so the same identity buckets flags on both
+  sides. See `experiment-platform/18-identity-bucketing.md`. Mirrors
+  `@shipeasy/sdk` (TS) 7.9.0 and the Python SDK 0.20.0.
+
 ## 0.17.1 — 2026-07-19
 
 ### Fix: honor the gatekeeper `stack` in local gate evaluation
