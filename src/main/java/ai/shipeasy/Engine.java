@@ -33,7 +33,7 @@ public final class Engine implements AutoCloseable {
     private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
-    public static final String VERSION = "0.18.0";
+    public static final String VERSION = "0.19.0";
 
     private final String apiKey;
     private final String baseUrl;
@@ -108,6 +108,26 @@ public final class Engine implements AutoCloseable {
 
     // Local overrides (Statsig-style). Thread-safe to match the volatile-blob
     // concurrency model; an override, when present, wins over any fetched value.
+    /**
+     * SSR tag defaults, set from the {@code configure} options. The tag helpers
+     * ({@link #i18nScriptTag()} / {@link #bootstrapScriptTag()} /
+     * {@link #devtoolsScriptTag()}) take every argument from here unless the
+     * callsite passes one, so a template calls {@code Shipeasy.i18nScriptTag()}
+     * instead of repeating configuration. {@code clientKey} is the PUBLIC client
+     * key — never the server key, which must not reach a browser.
+     */
+    private String tagClientKey;
+    private String tagProfile;
+    private String tagProjectId;
+    private String tagCdnBaseUrl;
+
+    /**
+     * Missing-setting warnings already logged, keyed {@code "helper.setting"}: a
+     * tag helper runs on every render, and one misconfiguration must not log a
+     * line per request.
+     */
+    private final Map<String, Boolean> warnedTagSettings = new ConcurrentHashMap<>();
+
     private final Map<String, Boolean> flagOverrides = new ConcurrentHashMap<>();
     private final Map<String, Object> configOverrides = new ConcurrentHashMap<>();
     private final Map<String, ExperimentResult> experimentOverrides = new ConcurrentHashMap<>();
@@ -314,6 +334,20 @@ public final class Engine implements AutoCloseable {
      */
     public Engine privateAttributes(List<String> attrs) {
         this.privateAttributes = attrs == null ? List.of() : List.copyOf(attrs);
+        return this;
+    }
+
+    /**
+     * Store the SSR tag defaults so the tag helpers can be called with no
+     * arguments at all. Threaded through by {@code Shipeasy.configure} from its
+     * options; a null argument leaves that default unset. Returns {@code this}
+     * for chaining.
+     */
+    Engine tagDefaults(String clientKey, String profile, String projectId, String cdnBaseUrl) {
+        if (clientKey != null) this.tagClientKey = clientKey;
+        if (profile != null) this.tagProfile = profile;
+        if (projectId != null) this.tagProjectId = projectId;
+        if (cdnBaseUrl != null) this.tagCdnBaseUrl = cdnBaseUrl;
         return this;
     }
 
@@ -759,9 +793,9 @@ public final class Engine implements AutoCloseable {
      * anon to identified flip. An anonymous request emits no {@code data-user}.
      */
     public String bootstrapScriptTag(Map<String, Object> user, String anonId, String i18nProfile, String baseUrl) {
-        Map<String, Object> payload = evaluate(user);
-        String base = cdnBase(baseUrl);
-        String profile = (i18nProfile == null || i18nProfile.isEmpty()) ? "en:prod" : i18nProfile;
+        Map<String, Object> payload = evaluate(user == null ? Map.of() : user);
+        String base = cdnBaseFor(baseUrl);
+        String profile = profileFor(i18nProfile);
         StringBuilder sb = new StringBuilder();
         sb.append("<script src=\"").append(escapeAttr(base + "/sdk/bootstrap.js")).append("\" ");
         sb.append("data-se-bootstrap ");
@@ -778,31 +812,122 @@ public final class Engine implements AutoCloseable {
         return sb.toString();
     }
 
+    /**
+     * {@link #bootstrapScriptTag(Map, String, String, String)} for an anonymous
+     * request, with every value from the {@code configure} options.
+     */
+    public String bootstrapScriptTag() {
+        return bootstrapScriptTag(Map.of(), null, null, null);
+    }
+
     /** {@link #bootstrapScriptTag(Map, String, String, String)} with defaults. */
     public String bootstrapScriptTag(Map<String, Object> user) {
-        return bootstrapScriptTag(user, null, "en:prod", null);
+        return bootstrapScriptTag(user, null, null, null);
     }
 
     /** {@link #bootstrapScriptTag(Map, String, String, String)} with an anon id. */
     public String bootstrapScriptTag(Map<String, Object> user, String anonId) {
-        return bootstrapScriptTag(user, anonId, "en:prod", null);
+        return bootstrapScriptTag(user, anonId, null, null);
     }
 
     /**
      * Return the i18n loader {@code <script>} tag. The loader fetches
      * translations for the profile using the PUBLIC client key (safe to embed
      * in HTML).
+     *
+     * <p>Every argument is OPTIONAL: a null {@code clientKey} / {@code profile} /
+     * {@code baseUrl} falls back to the client key, profile and CDN base passed
+     * to {@code configure}.
      */
     public String i18nScriptTag(String clientKey, String profile, String baseUrl) {
-        String base = cdnBase(baseUrl);
-        String p = (profile == null || profile.isEmpty()) ? "en:prod" : profile;
+        String base = cdnBaseFor(baseUrl);
+        String key = clientKeyFor(clientKey);
+        warnMissingTagSetting("i18nScriptTag", "clientKey", key);
         return "<script src=\"" + escapeAttr(base + "/sdk/i18n/loader.js") + "\" "
-            + attr("data-key", clientKey) + " " + attr("data-profile", p) + "></script>";
+            + attr("data-key", key) + " " + attr("data-profile", profileFor(profile)) + "></script>";
     }
 
     /** {@link #i18nScriptTag(String, String, String)} with the default CDN base. */
     public String i18nScriptTag(String clientKey, String profile) {
         return i18nScriptTag(clientKey, profile, null);
+    }
+
+    /**
+     * {@link #i18nScriptTag(String, String, String)} with every value from the
+     * {@code configure} options — the normal call.
+     */
+    public String i18nScriptTag() {
+        return i18nScriptTag(null, null, null);
+    }
+
+    /**
+     * Return the devtools overlay {@code <script>} tag. {@code se-devtools.js} is
+     * a hosted, self-executing bundle — nothing to install — that reads the
+     * project and the PUBLIC client key off the tag. The overlay opens with
+     * Shift+Alt+S or on any page loaded with {@code ?se=1}.
+     *
+     * <p>Every argument is OPTIONAL: a null {@code projectId} / {@code clientKey}
+     * / {@code baseUrl} falls back to what {@code configure} was given.
+     * {@code defer} keeps the overlay off the critical rendering path — a
+     * developer tool is never needed for first paint.
+     */
+    public String devtoolsScriptTag(String projectId, String clientKey, String baseUrl, boolean defer) {
+        String base = cdnBaseFor(baseUrl);
+        String pid = (projectId == null || projectId.isEmpty())
+            ? (tagProjectId == null ? "" : tagProjectId) : projectId;
+        String key = clientKeyFor(clientKey);
+        warnMissingTagSetting("devtoolsScriptTag", "projectId", pid);
+        warnMissingTagSetting("devtoolsScriptTag", "clientKey", key);
+        StringBuilder sb = new StringBuilder();
+        sb.append("<script src=\"").append(escapeAttr(base + "/se-devtools.js")).append("\" ");
+        sb.append(attr("data-project-id", pid)).append(' ');
+        sb.append(attr("data-client-api-key", key));
+        if (defer) sb.append(" defer");
+        sb.append("></script>");
+        return sb.toString();
+    }
+
+    /** {@link #devtoolsScriptTag(String, String, String, boolean)} for a project id. */
+    public String devtoolsScriptTag(String projectId) {
+        return devtoolsScriptTag(projectId, null, null, true);
+    }
+
+    /**
+     * {@link #devtoolsScriptTag(String, String, String, boolean)} with every value
+     * from the {@code configure} options — the normal call.
+     */
+    public String devtoolsScriptTag() {
+        return devtoolsScriptTag(null, null, null, true);
+    }
+
+    /** CDN origin for a tag: the per-call override, else the configured base, else the default. */
+    private String cdnBaseFor(String override) {
+        return cdnBase((override == null || override.isEmpty()) ? tagCdnBaseUrl : override);
+    }
+
+    /** The i18n profile a tag carries: per-call override, else configured, else the default. */
+    private String profileFor(String override) {
+        if (override != null && !override.isEmpty()) return override;
+        if (tagProfile != null && !tagProfile.isEmpty()) return tagProfile;
+        return "en:prod";
+    }
+
+    /** The PUBLIC client key a tag carries. */
+    private String clientKeyFor(String override) {
+        if (override != null && !override.isEmpty()) return override;
+        return tagClientKey == null ? "" : tagClientKey;
+    }
+
+    /**
+     * A tag built with no key / project id is not an error — it renders, and the
+     * browser bundle reports what it needs — but it is never what the caller
+     * wanted. Logged once per (helper, setting).
+     */
+    private void warnMissingTagSetting(String fnName, String setting, String value) {
+        if (value != null && !value.isEmpty()) return;
+        if (warnedTagSettings.putIfAbsent(fnName + "." + setting, Boolean.TRUE) != null) return;
+        Log.warn(fnName + "(): no " + setting + " — pass it, or set " + setting
+            + "(...) on the configure options; the tag will render without it");
     }
 
     private static String cdnBase(String override) {

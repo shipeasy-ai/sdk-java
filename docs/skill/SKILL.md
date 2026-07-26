@@ -154,8 +154,10 @@ Booleans → gates; strings/numbers/objects → dynamic configs. `targetingKey` 
   `__se_anon_id` cookie.
 - **Private attributes / sticky bucketing:** `Shipeasy.options(key)
   .privateAttributes(List.of("email")).stickyStore(new InMemoryStickyStore())`.
-- **SSR:** package-level `Shipeasy.bootstrapScriptTag(user, anonId, profile, baseUrl)`
-  + `Shipeasy.i18nScriptTag(clientKey, "en:prod")`.
+- **SSR:** package-level `Shipeasy.bootstrapScriptTag(user, anonId)`,
+  `Shipeasy.i18nScriptTag()` and `Shipeasy.devtoolsScriptTag()` (overlay:
+  Shift+Alt+S or `?se=1`) — every argument is optional and falls back to the
+  configure options (`.clientKey`, `.profile`, `.projectId`, `.cdnBaseUrl`).
 - **Change listeners:** `Shipeasy.onChange(() -> ...)` (requires `.poll(true)`;
   returns a cancel `Runnable`).
 
@@ -165,5 +167,5 @@ Reference: <https://shipeasy-ai.github.io/sdk-java/pages/advanced.md> ·
 ## i18n
 
 This is a **server** SDK — it has **no `t()`**. It emits the loader `<script>` tag
-(`Shipeasy.i18nScriptTag(clientKey, profile)`, using the PUBLIC client key) so the
+(`Shipeasy.i18nScriptTag()`, using the PUBLIC client key from the options) so the
 **browser** client SDK renders translations.

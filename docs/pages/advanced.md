@@ -103,12 +103,45 @@ the `__se_anon_id` cookie:
 // Assumes Shipeasy.configure(...) ran at startup — see Installation.
 Map<String, Object> user = Map.of("user_id", "u_123");
 
-String head = Shipeasy.bootstrapScriptTag(user, anonId, "en:prod", null)
-            + Shipeasy.i18nScriptTag(clientKey, "en:prod");
+String head = Shipeasy.bootstrapScriptTag(user, anonId)
+            + Shipeasy.i18nScriptTag();
 ```
 
-Overloads let you omit the anon id, or pass `i18nProfile` / `baseUrl` (defaults
-to `https://cdn.shipeasy.ai`).
+### Every argument is optional
+
+The tag helpers overload down to a no-argument call: the client key, profile,
+project id and CDN base all come from the `configure` options, and a `null`
+argument (or no `user`) falls back the same way.
+
+| Helper | No-argument form | Defaults from the options |
+| --- | --- | --- |
+| `Shipeasy.i18nScriptTag()` | `i18nScriptTag(clientKey, profile, baseUrl)` | `.clientKey`, `.profile`, `.cdnBaseUrl` |
+| `Shipeasy.bootstrapScriptTag()` | `bootstrapScriptTag(user, anonId, i18nProfile, baseUrl)` | anonymous request, `.profile`, `.cdnBaseUrl` |
+| `Shipeasy.devtoolsScriptTag()` | `devtoolsScriptTag(projectId, clientKey, baseUrl, defer)` | `.projectId`, `.clientKey`, `.cdnBaseUrl` |
+
+```java
+Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+    .clientKey(System.getenv("SHIPEASY_CLIENT_KEY"))   // PUBLIC key, for the tags
+    .projectId(System.getenv("SHIPEASY_PROJECT_ID"))   // for the devtools tag
+    .profile("en:prod"));
+```
+
+A tag still renders when a value is missing (the browser bundle reports what it
+needs), but the SDK logs a warning naming the option to fill in — once per
+option, not once per render.
+
+### Devtools overlay tag
+
+`Shipeasy.devtoolsScriptTag()` emits the hosted devtools overlay bundle —
+nothing to install, no overlay code in your artifact. It reads the project id and
+public client key off the tag and opens with **Shift+Alt+S** or on any page
+loaded with `?se=1`. It is deferred unless you pass `defer = false`: a developer
+tool never belongs on the critical rendering path.
+
+```java
+// Render it for your own team only.
+String devtools = user.isStaff() ? Shipeasy.devtoolsScriptTag() : "";
+```
 
 ### Identity coherence (no anon to identified flip)
 

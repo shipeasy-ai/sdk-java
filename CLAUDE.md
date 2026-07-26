@@ -22,7 +22,8 @@ Users are taught exactly **two** things, and the docs must never drift from them
 
 Plus the package-level statics on `Shipeasy` that let users avoid the heavyweight
 object: `overrideFlag` / `overrideConfig` / `overrideExperiment` /
-`clearOverrides`, `onChange`, `bootstrapScriptTag` / `i18nScriptTag`, the
+`clearOverrides`, `onChange`, `bootstrapScriptTag` / `i18nScriptTag` /
+`devtoolsScriptTag`, the
 global-form `ShipeasyProvider()` (OpenFeature), and the `See.see()` family.
 
 **The `Engine` class is an internal detail. Do NOT document it.** It stays public

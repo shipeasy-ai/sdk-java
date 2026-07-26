@@ -72,9 +72,49 @@ public final class Shipeasy {
         StickyBucketStore stickyStore;
         LogLevel logLevel = LogLevel.WARN;
         Function<Object, Map<String, Object>> attributes = IDENTITY;
+        // SSR tag defaults, read by the i18n / bootstrap / devtools tag helpers
+        // whenever the callsite passes no argument.
+        String clientKey;
+        String profile;
+        String projectId;
+        String cdnBaseUrl;
 
         private Options(String apiKey) {
             this.apiKey = apiKey;
+        }
+
+        /**
+         * The PUBLIC client key ({@code sdk_client_...}) the SSR i18n and devtools
+         * tags carry. It never authenticates a read — it is only what the browser
+         * bundles use. NEVER pass the server key here.
+         */
+        public Options clientKey(String clientKey) {
+            this.clientKey = clientKey;
+            return this;
+        }
+
+        /** Default i18n profile the SSR tags carry (default {@code "en:prod"}). */
+        public Options profile(String profile) {
+            this.profile = profile;
+            return this;
+        }
+
+        /**
+         * Your Shipeasy project id ({@code proj_...}), read by
+         * {@link Shipeasy#devtoolsScriptTag()}.
+         */
+        public Options projectId(String projectId) {
+            this.projectId = projectId;
+            return this;
+        }
+
+        /**
+         * CDN origin the SSR tags are built against (default
+         * {@code https://cdn.shipeasy.ai}).
+         */
+        public Options cdnBaseUrl(String cdnBaseUrl) {
+            this.cdnBaseUrl = cdnBaseUrl;
+            return this;
         }
 
         /**
@@ -217,6 +257,7 @@ public final class Shipeasy {
             Engine e = new Engine(opts.apiKey, opts.baseUrl, opts.env,
                 opts.isTrackingEnabled, opts.isNetworkEnabled, opts.logLevel);
             e.privateAttributes(opts.privateAttributes).stickyStore(opts.stickyStore);
+            e.tagDefaults(opts.clientKey, opts.profile, opts.projectId, opts.cdnBaseUrl);
             e.setInternalErrorReporting(!opts.disableInternalErrorReporting);
             attributes = opts.attributes;
             engine = e;
@@ -307,6 +348,35 @@ public final class Shipeasy {
         Map<String, Boolean> flags = Map.of();
         Map<String, Object> configs = Map.of();
         Map<String, Variant> experiments = Map.of();
+        // Same SSR tag defaults as Options, so a test can exercise the tags.
+        String clientKey;
+        String profile;
+        String projectId;
+        String cdnBaseUrl;
+
+        /** Same as {@link Options#clientKey} — the PUBLIC client key for the SSR tags. */
+        public TestOptions clientKey(String clientKey) {
+            this.clientKey = clientKey;
+            return this;
+        }
+
+        /** Same as {@link Options#profile} — the default i18n profile for the SSR tags. */
+        public TestOptions profile(String profile) {
+            this.profile = profile;
+            return this;
+        }
+
+        /** Same as {@link Options#projectId} — the project id for the devtools tag. */
+        public TestOptions projectId(String projectId) {
+            this.projectId = projectId;
+            return this;
+        }
+
+        /** Same as {@link Options#cdnBaseUrl} — the CDN origin for the SSR tags. */
+        public TestOptions cdnBaseUrl(String cdnBaseUrl) {
+            this.cdnBaseUrl = cdnBaseUrl;
+            return this;
+        }
 
         /** Same transform as {@link Options#attributes} (default identity). */
         public TestOptions attributes(Function<Object, Map<String, Object>> a) {
@@ -423,6 +493,7 @@ public final class Shipeasy {
     }
 
     private static void applyOverrides(Engine e, TestOptions o) {
+        e.tagDefaults(o.clientKey, o.profile, o.projectId, o.cdnBaseUrl);
         o.flags.forEach((name, value) -> e.overrideFlag(name, value));
         o.configs.forEach(e::overrideConfig);
         o.experiments.forEach((name, v) -> e.overrideExperiment(name, v.group, v.params));
@@ -483,17 +554,43 @@ public final class Shipeasy {
         return requireEngine("onChange").onChange(listener);
     }
 
+    /**
+     * SSR bootstrap {@code <script>} tag for an anonymous request, via the
+     * configured global engine. Every value comes from the configure options.
+     */
+    public static String bootstrapScriptTag() {
+        return requireEngine("bootstrapScriptTag").bootstrapScriptTag();
+    }
+
     /** SSR bootstrap {@code <script>} tag for a request, via the configured global engine. */
     public static String bootstrapScriptTag(Map<String, Object> user) {
         return requireEngine("bootstrapScriptTag").bootstrapScriptTag(user);
     }
 
-    /** SSR bootstrap {@code <script>} tag (full form), via the configured global engine. */
+    /** SSR bootstrap {@code <script>} tag with an anon id, via the configured global engine. */
+    public static String bootstrapScriptTag(Map<String, Object> user, String anonId) {
+        return requireEngine("bootstrapScriptTag").bootstrapScriptTag(user, anonId);
+    }
+
+    /**
+     * SSR bootstrap {@code <script>} tag (full form), via the configured global
+     * engine. A null {@code i18nProfile} / {@code baseUrl} falls back to the
+     * profile and CDN base passed to {@link #configure}.
+     */
     public static String bootstrapScriptTag(Map<String, Object> user, String anonId, String i18nProfile, String baseUrl) {
         return requireEngine("bootstrapScriptTag").bootstrapScriptTag(user, anonId, i18nProfile, baseUrl);
     }
 
-    /** i18n loader {@code <script>} tag (public client key), via the configured global engine. */
+    /**
+     * i18n loader {@code <script>} tag (public client key), via the configured
+     * global engine — the normal call: the key, profile and CDN base all come
+     * from the configure options.
+     */
+    public static String i18nScriptTag() {
+        return requireEngine("i18nScriptTag").i18nScriptTag();
+    }
+
+    /** i18n loader {@code <script>} tag with an explicit key + profile. */
     public static String i18nScriptTag(String clientKey, String profile) {
         return requireEngine("i18nScriptTag").i18nScriptTag(clientKey, profile);
     }
@@ -501,5 +598,29 @@ public final class Shipeasy {
     /** i18n loader {@code <script>} tag (with base URL), via the configured global engine. */
     public static String i18nScriptTag(String clientKey, String profile, String baseUrl) {
         return requireEngine("i18nScriptTag").i18nScriptTag(clientKey, profile, baseUrl);
+    }
+
+    /**
+     * Devtools overlay {@code <script>} tag (hosted {@code se-devtools.js}; opens
+     * with Shift+Alt+S or {@code ?se=1}), via the configured global engine — the
+     * normal call: the project id, client key and CDN base come from the
+     * configure options.
+     */
+    public static String devtoolsScriptTag() {
+        return requireEngine("devtoolsScriptTag").devtoolsScriptTag();
+    }
+
+    /** Devtools overlay {@code <script>} tag for an explicit project id. */
+    public static String devtoolsScriptTag(String projectId) {
+        return requireEngine("devtoolsScriptTag").devtoolsScriptTag(projectId);
+    }
+
+    /**
+     * Devtools overlay {@code <script>} tag (full form). A null argument falls
+     * back to the configure options; {@code defer} keeps the overlay off the
+     * critical rendering path.
+     */
+    public static String devtoolsScriptTag(String projectId, String clientKey, String baseUrl, boolean defer) {
+        return requireEngine("devtoolsScriptTag").devtoolsScriptTag(projectId, clientKey, baseUrl, defer);
     }
 }

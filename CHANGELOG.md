@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.19.0 — 2026-07-26
+
+### feat: the SSR tag helpers take every argument from `configure`, plus a devtools tag
+
+- **`Shipeasy.i18nScriptTag()` and `Shipeasy.bootstrapScriptTag()` now have
+  no-argument overloads.** Every value falls back to the `configure` options —
+  `clientKey`, `profile` (for both `profile` and `i18nProfile`), `cdnBaseUrl` —
+  and no `user` renders an anonymous request. Explicit arguments still win, and a
+  `null` argument means "use the configured value", so a template calls
+  `Shipeasy.i18nScriptTag()` instead of repeating configuration at each callsite.
+- **New `Shipeasy.devtoolsScriptTag()`** emits the hosted devtools overlay bundle
+  (`se-devtools.js`) with `data-project-id` + `data-client-api-key`, deferred by
+  default. The overlay opens with **Shift+Alt+S** or on any page loaded with
+  `?se=1`. Its arguments are optional the same way.
+- **New builder options** feeding those defaults: `.clientKey(String)` (the
+  PUBLIC client key), `.profile(String)`, `.projectId(String)`,
+  `.cdnBaseUrl(String)` — on both `Options` and `TestOptions`.
+- A tag built with a missing key / project id still renders, and the SDK logs a
+  warning naming the option to fill in — once per option, not once per render.
+- No behaviour change for existing callsites: an explicitly passed key/profile
+  still wins, and the profile fallback is still `"en:prod"` when nothing is
+  configured. Mirrors the Ruby SDK 3.7.0, Python 0.21.0, PHP 0.20.0, Go 0.19.0
+  and Kotlin 0.20.0.
+
 ## 0.18.0 — 2026-07-19
 
 ### feat(bootstrap): carry the server-identified user on the SSR tag as `data-user`

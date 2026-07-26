@@ -65,6 +65,10 @@ them to `Shipeasy.configure(...)`:
 | `.stickyStore(StickyBucketStore)` | none | Pluggable sticky-bucketing store. See [Advanced](advanced.md). |
 | `.logLevel(LogLevel)` | `WARN` | Verbosity of the SDK's own diagnostics. See below. |
 | `.attributes(Function)` | identity | Map your user object to the attribute map. |
+| `.clientKey(String)` | none | **Public** client key (`sdk_client_…`) — the default the SSR i18n / devtools tags carry. Never the server key. See [Advanced](advanced.md). |
+| `.profile(String)` | `"en:prod"` | Default i18n profile the SSR tags carry. See [i18n](i18n.md). |
+| `.projectId(String)` | none | Project id (`proj_…`) read by `Shipeasy.devtoolsScriptTag()`. See [Advanced](advanced.md). |
+| `.cdnBaseUrl(String)` | `https://cdn.shipeasy.ai` | CDN origin the SSR tags are built against. |
 
 ```java
 Shipeasy.configure(Shipeasy.options(key)
