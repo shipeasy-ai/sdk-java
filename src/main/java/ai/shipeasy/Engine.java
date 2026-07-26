@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
 public final class Engine implements AutoCloseable {
     private static final String DEFAULT_BASE_URL = "https://api.shipeasy.ai";
     /**
-     * CDN origin serving the static loader scripts ({@code /sdk/bootstrap.js},
+     * CDN origin serving the static loader scripts ({@code /sdk/runtime.js},
      * {@code /sdk/i18n/loader.js}) — distinct from the edge API the blobs are
      * fetched from.
      */
@@ -783,9 +783,10 @@ public final class Engine implements AutoCloseable {
 
     /**
      * Return the cross-platform SSR bootstrap {@code <script>} tag for a request:
-     * {@code se-bootstrap.js} reads its {@code data-*} attributes and hydrates
-     * {@code window.__SE_BOOTSTRAP} (and writes the anon cookie). No SDK key is
-     * embedded — the server key must never reach the browser.
+     * {@code /sdk/runtime.js} reads its {@code data-*} attributes, installs
+     * {@code window.shipeasy}, republishes {@code window.__SE_BOOTSTRAP} for the
+     * npm client SDK and writes the anon cookie. No SDK key is embedded — the
+     * server key must never reach the browser.
      *
      * <p>When {@code user} carries an identified attribute (anything other than
      * {@code anonymous_id}), the tag also emits {@code data-user} — the
@@ -797,8 +798,8 @@ public final class Engine implements AutoCloseable {
         String base = cdnBaseFor(baseUrl);
         String profile = profileFor(i18nProfile);
         StringBuilder sb = new StringBuilder();
-        sb.append("<script src=\"").append(escapeAttr(base + "/sdk/bootstrap.js")).append("\" ");
-        sb.append("data-se-bootstrap ");
+        sb.append("<script src=\"").append(escapeAttr(base + "/sdk/runtime.js")).append("\" ");
+        sb.append("data-se-bootstrap data-se-boot ");
         sb.append(attr("data-flags", json(payload.get("flags")))).append(' ');
         sb.append(attr("data-configs", json(payload.get("configs")))).append(' ');
         sb.append(attr("data-experiments", json(payload.get("experiments")))).append(' ');

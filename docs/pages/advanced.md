@@ -96,8 +96,9 @@ http4k, Javalin) can use the `AnonId` primitives directly.
 Emit the request's evaluated flags as a declarative `<script>` tag so the
 browser SDK has them on first paint. `bootstrapScriptTag` carries the payload in
 `data-*` attributes (**no key** — the server key must never reach the browser);
-the static `se-bootstrap.js` loader hydrates `window.__SE_BOOTSTRAP` and writes
-the `__se_anon_id` cookie:
+the `/sdk/runtime.js` browser runtime reads them, installs `window.shipeasy`,
+republishes `window.__SE_BOOTSTRAP` for the npm client SDK and writes the
+`__se_anon_id` cookie so the browser buckets identically to the server:
 
 ```java
 // Assumes Shipeasy.configure(...) ran at startup — see Installation.

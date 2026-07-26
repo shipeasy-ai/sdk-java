@@ -37,7 +37,7 @@ class BootstrapTest {
     @Test
     void bootstrapScriptTagAttrs() throws Exception {
         String tag = client().bootstrapScriptTag(Map.of("user_id", "u1"), "anon-1");
-        assertTrue(tag.contains("src=\"https://cdn.shipeasy.ai/sdk/bootstrap.js\""));
+        assertTrue(tag.contains("src=\"https://cdn.shipeasy.ai/sdk/runtime.js\""));
         assertTrue(tag.contains("data-se-bootstrap"));
         assertTrue(tag.contains("data-anon-id=\"anon-1\""));
         assertTrue(tag.contains("data-i18n-profile=\"en:prod\""));
@@ -117,7 +117,7 @@ class BootstrapTest {
     @Test
     void bootstrapScriptTagNeedsNoUser() {
         String tag = configured().bootstrapScriptTag();
-        assertTrue(tag.contains("src=\"https://cdn.example.test/sdk/bootstrap.js\""));
+        assertTrue(tag.contains("src=\"https://cdn.example.test/sdk/runtime.js\""));
         assertTrue(tag.contains("data-i18n-profile=\"fr:prod\""));
         assertFalse(tag.contains("data-user"));
     }
