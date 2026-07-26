@@ -59,11 +59,6 @@ public class PushI18nKeysRequest {
   @javax.annotation.Nonnull
   private UUID profileId;
 
-  public static final String SERIALIZED_NAME_CHUNK = "chunk";
-  @SerializedName(SERIALIZED_NAME_CHUNK)
-  @javax.annotation.Nullable
-  private String chunk = "default";
-
   public static final String SERIALIZED_NAME_KEYS = "keys";
   @SerializedName(SERIALIZED_NAME_KEYS)
   @javax.annotation.Nonnull
@@ -90,24 +85,6 @@ public class PushI18nKeysRequest {
     this.profileId = profileId;
   }
 
-
-  public PushI18nKeysRequest chunk(@javax.annotation.Nullable String chunk) {
-    this.chunk = chunk;
-    return this;
-  }
-
-  /**
-   * Logical grouping the new keys are filed under. Defaults to &#x60;default&#x60;.
-   * @return chunk
-   */
-  @javax.annotation.Nullable
-  public String getChunk() {
-    return chunk;
-  }
-
-  public void setChunk(@javax.annotation.Nullable String chunk) {
-    this.chunk = chunk;
-  }
 
 
   public PushI18nKeysRequest keys(@javax.annotation.Nonnull List<PushI18nKeysRequestKeysInner> keys) {
@@ -192,14 +169,13 @@ public class PushI18nKeysRequest {
     }
     PushI18nKeysRequest pushI18nKeysRequest = (PushI18nKeysRequest) o;
     return Objects.equals(this.profileId, pushI18nKeysRequest.profileId) &&
-        Objects.equals(this.chunk, pushI18nKeysRequest.chunk) &&
         Objects.equals(this.keys, pushI18nKeysRequest.keys)&&
         Objects.equals(this.additionalProperties, pushI18nKeysRequest.additionalProperties);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(profileId, chunk, keys, additionalProperties);
+    return Objects.hash(profileId, keys, additionalProperties);
   }
 
   @Override
@@ -207,7 +183,6 @@ public class PushI18nKeysRequest {
     StringBuilder sb = new StringBuilder();
     sb.append("class PushI18nKeysRequest {\n");
     sb.append("    profileId: ").append(toIndentedString(profileId)).append("\n");
-    sb.append("    chunk: ").append(toIndentedString(chunk)).append("\n");
     sb.append("    keys: ").append(toIndentedString(keys)).append("\n");
     sb.append("    additionalProperties: ").append(toIndentedString(additionalProperties)).append("\n");
     sb.append("}");
@@ -228,7 +203,7 @@ public class PushI18nKeysRequest {
 
   static {
     // a set of all properties/fields (JSON key names)
-    openapiFields = new HashSet<String>(Arrays.asList("profile_id", "chunk", "keys"));
+    openapiFields = new HashSet<String>(Arrays.asList("profile_id", "keys"));
 
     // a set of required properties/fields (JSON key names)
     openapiRequiredFields = new HashSet<String>(Arrays.asList("profile_id", "keys"));
@@ -256,9 +231,6 @@ public class PushI18nKeysRequest {
         JsonObject jsonObj = jsonElement.getAsJsonObject();
       if (!jsonObj.get("profile_id").isJsonPrimitive()) {
         throw new IllegalArgumentException(String.format(java.util.Locale.ROOT, "Expected the field `profile_id` to be a primitive type in the JSON string but got `%s`", jsonObj.get("profile_id").toString()));
-      }
-      if ((jsonObj.get("chunk") != null && !jsonObj.get("chunk").isJsonNull()) && !jsonObj.get("chunk").isJsonPrimitive()) {
-        throw new IllegalArgumentException(String.format(java.util.Locale.ROOT, "Expected the field `chunk` to be a primitive type in the JSON string but got `%s`", jsonObj.get("chunk").toString()));
       }
       if (jsonObj.get("keys") != null) {
         if (!jsonObj.get("keys").isJsonArray()) {

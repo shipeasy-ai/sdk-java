@@ -73,11 +73,6 @@ public class PushI18nKeysResponse {
   @javax.annotation.Nonnull
   private BigDecimal skippedCount;
 
-  public static final String SERIALIZED_NAME_CHUNK = "chunk";
-  @SerializedName(SERIALIZED_NAME_CHUNK)
-  @javax.annotation.Nullable
-  private String chunk;
-
   public PushI18nKeysResponse() {
   }
 
@@ -173,24 +168,6 @@ public class PushI18nKeysResponse {
   }
 
 
-  public PushI18nKeysResponse chunk(@javax.annotation.Nullable String chunk) {
-    this.chunk = chunk;
-    return this;
-  }
-
-  /**
-   * The chunk the keys were filed under.
-   * @return chunk
-   */
-  @javax.annotation.Nullable
-  public String getChunk() {
-    return chunk;
-  }
-
-  public void setChunk(@javax.annotation.Nullable String chunk) {
-    this.chunk = chunk;
-  }
-
 
 
   @Override
@@ -205,13 +182,12 @@ public class PushI18nKeysResponse {
     return Objects.equals(this.added, pushI18nKeysResponse.added) &&
         Objects.equals(this.skipped, pushI18nKeysResponse.skipped) &&
         Objects.equals(this.pushedCount, pushI18nKeysResponse.pushedCount) &&
-        Objects.equals(this.skippedCount, pushI18nKeysResponse.skippedCount) &&
-        Objects.equals(this.chunk, pushI18nKeysResponse.chunk);
+        Objects.equals(this.skippedCount, pushI18nKeysResponse.skippedCount);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(added, skipped, pushedCount, skippedCount, chunk);
+    return Objects.hash(added, skipped, pushedCount, skippedCount);
   }
 
   @Override
@@ -222,7 +198,6 @@ public class PushI18nKeysResponse {
     sb.append("    skipped: ").append(toIndentedString(skipped)).append("\n");
     sb.append("    pushedCount: ").append(toIndentedString(pushedCount)).append("\n");
     sb.append("    skippedCount: ").append(toIndentedString(skippedCount)).append("\n");
-    sb.append("    chunk: ").append(toIndentedString(chunk)).append("\n");
     sb.append("}");
     return sb.toString();
   }
@@ -241,7 +216,7 @@ public class PushI18nKeysResponse {
 
   static {
     // a set of all properties/fields (JSON key names)
-    openapiFields = new HashSet<String>(Arrays.asList("added", "skipped", "pushed_count", "skipped_count", "chunk"));
+    openapiFields = new HashSet<String>(Arrays.asList("added", "skipped", "pushed_count", "skipped_count"));
 
     // a set of required properties/fields (JSON key names)
     openapiRequiredFields = new HashSet<String>(Arrays.asList("added", "skipped", "pushed_count", "skipped_count"));
@@ -286,9 +261,6 @@ public class PushI18nKeysResponse {
         throw new IllegalArgumentException("Expected the field `linkedContent` to be an array in the JSON string but got `null`");
       } else if (!jsonObj.get("skipped").isJsonArray()) {
         throw new IllegalArgumentException(String.format(java.util.Locale.ROOT, "Expected the field `skipped` to be an array in the JSON string but got `%s`", jsonObj.get("skipped").toString()));
-      }
-      if ((jsonObj.get("chunk") != null && !jsonObj.get("chunk").isJsonNull()) && !jsonObj.get("chunk").isJsonPrimitive()) {
-        throw new IllegalArgumentException(String.format(java.util.Locale.ROOT, "Expected the field `chunk` to be a primitive type in the JSON string but got `%s`", jsonObj.get("chunk").toString()));
       }
   }
 

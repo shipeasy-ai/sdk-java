@@ -313,7 +313,7 @@ public class ProfilesApi {
 
     /**
      * List i18n profiles
-     * Returns every locale profile in the project (e.g. &#x60;en:prod&#x60;, &#x60;fr:prod&#x60;).  **Use case:** Discover which locale profiles exist before pushing keys or publishing a chunk.
+     * Returns every locale profile in the project (e.g. &#x60;en:prod&#x60;, &#x60;fr:prod&#x60;).  **Use case:** Discover which locale profiles exist before pushing keys or publishing.
      * @param xProjectId Project the request operates on. Optional — defaults to the project the SDK key belongs to; pass it only to scope a multi-project key (the generated client sets it once from its configuration, so per-call callers never thread it). (optional)
      * @return List&lt;ListI18nProfilesResponseInner&gt;
      * @throws ApiException If fail to call the API, e.g. server error or cannot deserialize the response body
@@ -337,7 +337,7 @@ public class ProfilesApi {
 
     /**
      * List i18n profiles
-     * Returns every locale profile in the project (e.g. &#x60;en:prod&#x60;, &#x60;fr:prod&#x60;).  **Use case:** Discover which locale profiles exist before pushing keys or publishing a chunk.
+     * Returns every locale profile in the project (e.g. &#x60;en:prod&#x60;, &#x60;fr:prod&#x60;).  **Use case:** Discover which locale profiles exist before pushing keys or publishing.
      * @param xProjectId Project the request operates on. Optional — defaults to the project the SDK key belongs to; pass it only to scope a multi-project key (the generated client sets it once from its configuration, so per-call callers never thread it). (optional)
      * @return ApiResponse&lt;List&lt;ListI18nProfilesResponseInner&gt;&gt;
      * @throws ApiException If fail to call the API, e.g. server error or cannot deserialize the response body
@@ -362,7 +362,7 @@ public class ProfilesApi {
 
     /**
      * List i18n profiles (asynchronously)
-     * Returns every locale profile in the project (e.g. &#x60;en:prod&#x60;, &#x60;fr:prod&#x60;).  **Use case:** Discover which locale profiles exist before pushing keys or publishing a chunk.
+     * Returns every locale profile in the project (e.g. &#x60;en:prod&#x60;, &#x60;fr:prod&#x60;).  **Use case:** Discover which locale profiles exist before pushing keys or publishing.
      * @param xProjectId Project the request operates on. Optional — defaults to the project the SDK key belongs to; pass it only to scope a multi-project key (the generated client sets it once from its configuration, so per-call callers never thread it). (optional)
      * @param _callback The callback to be executed when the API call finishes
      * @return The request call
@@ -399,7 +399,7 @@ public class ProfilesApi {
      <table border="1">
        <caption>Response Details</caption>
         <tr><td> Status Code </td><td> Description </td><td> Response Headers </td></tr>
-        <tr><td> 200 </td><td> Publish a profile chunk </td><td>  -  </td></tr>
+        <tr><td> 200 </td><td> Publish a profile </td><td>  -  </td></tr>
         <tr><td> 400 </td><td> The request was malformed (bad JSON or missing project scope). </td><td>  -  </td></tr>
         <tr><td> 401 </td><td> Missing or invalid admin SDK key. </td><td>  -  </td></tr>
         <tr><td> 403 </td><td> The key is valid but not allowed to perform this action. </td><td>  -  </td></tr>
@@ -477,7 +477,7 @@ public class ProfilesApi {
 
     /**
      * Publish a profile live
-     * Publish a profile to the CDN — rebuild its KV snapshot + purge the edge. Publishing is PROFILE-WIDE: the whole profile is snapshotted into one KV blob, so the optional &#x60;chunk&#x60; in the body is an audit label only (it does not scope what ships).  **Use case:** Ship the latest translations live after pushing/updating keys.
+     * Publish a profile to the CDN — rebuild its KV snapshot + purge the edge. Publishing is PROFILE-WIDE: the whole profile is snapshotted into one KV blob, so the body takes no options.  **Use case:** Ship the latest translations live after pushing/updating keys.
      * @param profileId The profile id to publish. (required)
      * @param publishI18nProfileRequest  (required)
      * @param xProjectId Project the request operates on. Optional — defaults to the project the SDK key belongs to; pass it only to scope a multi-project key (the generated client sets it once from its configuration, so per-call callers never thread it). (optional)
@@ -487,7 +487,7 @@ public class ProfilesApi {
      <table border="1">
        <caption>Response Details</caption>
         <tr><td> Status Code </td><td> Description </td><td> Response Headers </td></tr>
-        <tr><td> 200 </td><td> Publish a profile chunk </td><td>  -  </td></tr>
+        <tr><td> 200 </td><td> Publish a profile </td><td>  -  </td></tr>
         <tr><td> 400 </td><td> The request was malformed (bad JSON or missing project scope). </td><td>  -  </td></tr>
         <tr><td> 401 </td><td> Missing or invalid admin SDK key. </td><td>  -  </td></tr>
         <tr><td> 403 </td><td> The key is valid but not allowed to perform this action. </td><td>  -  </td></tr>
@@ -503,7 +503,7 @@ public class ProfilesApi {
 
     /**
      * Publish a profile live
-     * Publish a profile to the CDN — rebuild its KV snapshot + purge the edge. Publishing is PROFILE-WIDE: the whole profile is snapshotted into one KV blob, so the optional &#x60;chunk&#x60; in the body is an audit label only (it does not scope what ships).  **Use case:** Ship the latest translations live after pushing/updating keys.
+     * Publish a profile to the CDN — rebuild its KV snapshot + purge the edge. Publishing is PROFILE-WIDE: the whole profile is snapshotted into one KV blob, so the body takes no options.  **Use case:** Ship the latest translations live after pushing/updating keys.
      * @param profileId The profile id to publish. (required)
      * @param publishI18nProfileRequest  (required)
      * @param xProjectId Project the request operates on. Optional — defaults to the project the SDK key belongs to; pass it only to scope a multi-project key (the generated client sets it once from its configuration, so per-call callers never thread it). (optional)
@@ -513,7 +513,7 @@ public class ProfilesApi {
      <table border="1">
        <caption>Response Details</caption>
         <tr><td> Status Code </td><td> Description </td><td> Response Headers </td></tr>
-        <tr><td> 200 </td><td> Publish a profile chunk </td><td>  -  </td></tr>
+        <tr><td> 200 </td><td> Publish a profile </td><td>  -  </td></tr>
         <tr><td> 400 </td><td> The request was malformed (bad JSON or missing project scope). </td><td>  -  </td></tr>
         <tr><td> 401 </td><td> Missing or invalid admin SDK key. </td><td>  -  </td></tr>
         <tr><td> 403 </td><td> The key is valid but not allowed to perform this action. </td><td>  -  </td></tr>
@@ -530,7 +530,7 @@ public class ProfilesApi {
 
     /**
      * Publish a profile live (asynchronously)
-     * Publish a profile to the CDN — rebuild its KV snapshot + purge the edge. Publishing is PROFILE-WIDE: the whole profile is snapshotted into one KV blob, so the optional &#x60;chunk&#x60; in the body is an audit label only (it does not scope what ships).  **Use case:** Ship the latest translations live after pushing/updating keys.
+     * Publish a profile to the CDN — rebuild its KV snapshot + purge the edge. Publishing is PROFILE-WIDE: the whole profile is snapshotted into one KV blob, so the body takes no options.  **Use case:** Ship the latest translations live after pushing/updating keys.
      * @param profileId The profile id to publish. (required)
      * @param publishI18nProfileRequest  (required)
      * @param xProjectId Project the request operates on. Optional — defaults to the project the SDK key belongs to; pass it only to scope a multi-project key (the generated client sets it once from its configuration, so per-call callers never thread it). (optional)
@@ -541,7 +541,7 @@ public class ProfilesApi {
      <table border="1">
        <caption>Response Details</caption>
         <tr><td> Status Code </td><td> Description </td><td> Response Headers </td></tr>
-        <tr><td> 200 </td><td> Publish a profile chunk </td><td>  -  </td></tr>
+        <tr><td> 200 </td><td> Publish a profile </td><td>  -  </td></tr>
         <tr><td> 400 </td><td> The request was malformed (bad JSON or missing project scope). </td><td>  -  </td></tr>
         <tr><td> 401 </td><td> Missing or invalid admin SDK key. </td><td>  -  </td></tr>
         <tr><td> 403 </td><td> The key is valid but not allowed to perform this action. </td><td>  -  </td></tr>

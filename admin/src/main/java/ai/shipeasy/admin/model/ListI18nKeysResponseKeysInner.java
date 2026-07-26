@@ -82,11 +82,6 @@ public class ListI18nKeysResponseKeysInner {
   @javax.annotation.Nullable
   private String profileId;
 
-  public static final String SERIALIZED_NAME_CHUNK_ID = "chunkId";
-  @SerializedName(SERIALIZED_NAME_CHUNK_ID)
-  @javax.annotation.Nullable
-  private String chunkId;
-
   public static final String SERIALIZED_NAME_UPDATED_AT = "updatedAt";
   @SerializedName(SERIALIZED_NAME_UPDATED_AT)
   @javax.annotation.Nullable
@@ -222,24 +217,6 @@ public class ListI18nKeysResponseKeysInner {
   }
 
 
-  public ListI18nKeysResponseKeysInner chunkId(@javax.annotation.Nullable String chunkId) {
-    this.chunkId = chunkId;
-    return this;
-  }
-
-  /**
-   * Owning chunk (authoring grouping) id.
-   * @return chunkId
-   */
-  @javax.annotation.Nullable
-  public String getChunkId() {
-    return chunkId;
-  }
-
-  public void setChunkId(@javax.annotation.Nullable String chunkId) {
-    this.chunkId = chunkId;
-  }
-
 
   public ListI18nKeysResponseKeysInner updatedAt(@javax.annotation.Nullable String updatedAt) {
     this.updatedAt = updatedAt;
@@ -339,7 +316,6 @@ public class ListI18nKeysResponseKeysInner {
         Objects.equals(this.description, listI18nKeysResponseKeysInner.description) &&
         Objects.equals(this.variables, listI18nKeysResponseKeysInner.variables) &&
         Objects.equals(this.profileId, listI18nKeysResponseKeysInner.profileId) &&
-        Objects.equals(this.chunkId, listI18nKeysResponseKeysInner.chunkId) &&
         Objects.equals(this.updatedAt, listI18nKeysResponseKeysInner.updatedAt) &&
         Objects.equals(this.updatedBy, listI18nKeysResponseKeysInner.updatedBy)&&
         Objects.equals(this.additionalProperties, listI18nKeysResponseKeysInner.additionalProperties);
@@ -347,7 +323,7 @@ public class ListI18nKeysResponseKeysInner {
 
   @Override
   public int hashCode() {
-    return Objects.hash(id, key, value, description, variables, profileId, chunkId, updatedAt, updatedBy, additionalProperties);
+    return Objects.hash(id, key, value, description, variables, profileId, updatedAt, updatedBy, additionalProperties);
   }
 
   @Override
@@ -360,7 +336,6 @@ public class ListI18nKeysResponseKeysInner {
     sb.append("    description: ").append(toIndentedString(description)).append("\n");
     sb.append("    variables: ").append(toIndentedString(variables)).append("\n");
     sb.append("    profileId: ").append(toIndentedString(profileId)).append("\n");
-    sb.append("    chunkId: ").append(toIndentedString(chunkId)).append("\n");
     sb.append("    updatedAt: ").append(toIndentedString(updatedAt)).append("\n");
     sb.append("    updatedBy: ").append(toIndentedString(updatedBy)).append("\n");
     sb.append("    additionalProperties: ").append(toIndentedString(additionalProperties)).append("\n");
@@ -382,7 +357,7 @@ public class ListI18nKeysResponseKeysInner {
 
   static {
     // a set of all properties/fields (JSON key names)
-    openapiFields = new HashSet<String>(Arrays.asList("id", "key", "value", "description", "variables", "profileId", "chunkId", "updatedAt", "updatedBy"));
+    openapiFields = new HashSet<String>(Arrays.asList("id", "key", "value", "description", "variables", "profileId", "updatedAt", "updatedBy"));
 
     // a set of required properties/fields (JSON key names)
     openapiRequiredFields = new HashSet<String>(Arrays.asList("id", "key", "value"));
@@ -426,9 +401,6 @@ public class ListI18nKeysResponseKeysInner {
       }
       if ((jsonObj.get("profileId") != null && !jsonObj.get("profileId").isJsonNull()) && !jsonObj.get("profileId").isJsonPrimitive()) {
         throw new IllegalArgumentException(String.format(java.util.Locale.ROOT, "Expected the field `profileId` to be a primitive type in the JSON string but got `%s`", jsonObj.get("profileId").toString()));
-      }
-      if ((jsonObj.get("chunkId") != null && !jsonObj.get("chunkId").isJsonNull()) && !jsonObj.get("chunkId").isJsonPrimitive()) {
-        throw new IllegalArgumentException(String.format(java.util.Locale.ROOT, "Expected the field `chunkId` to be a primitive type in the JSON string but got `%s`", jsonObj.get("chunkId").toString()));
       }
       if ((jsonObj.get("updatedAt") != null && !jsonObj.get("updatedAt").isJsonNull()) && !jsonObj.get("updatedAt").isJsonPrimitive()) {
         throw new IllegalArgumentException(String.format(java.util.Locale.ROOT, "Expected the field `updatedAt` to be a primitive type in the JSON string but got `%s`", jsonObj.get("updatedAt").toString()));

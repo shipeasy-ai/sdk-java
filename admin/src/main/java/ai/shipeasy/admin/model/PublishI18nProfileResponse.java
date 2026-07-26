@@ -61,11 +61,6 @@ public class PublishI18nProfileResponse {
   @javax.annotation.Nonnull
   private String profileId;
 
-  public static final String SERIALIZED_NAME_CHUNK = "chunk";
-  @SerializedName(SERIALIZED_NAME_CHUNK)
-  @javax.annotation.Nullable
-  private String chunk;
-
   public static final String SERIALIZED_NAME_PUBLISHED_AT = "published_at";
   @SerializedName(SERIALIZED_NAME_PUBLISHED_AT)
   @javax.annotation.Nonnull
@@ -195,24 +190,6 @@ public class PublishI18nProfileResponse {
     this.profileId = profileId;
   }
 
-
-  public PublishI18nProfileResponse chunk(@javax.annotation.Nullable String chunk) {
-    this.chunk = chunk;
-    return this;
-  }
-
-  /**
-   * Audit chunk label, or &#x60;null&#x60; when none was given.
-   * @return chunk
-   */
-  @javax.annotation.Nullable
-  public String getChunk() {
-    return chunk;
-  }
-
-  public void setChunk(@javax.annotation.Nullable String chunk) {
-    this.chunk = chunk;
-  }
 
 
   public PublishI18nProfileResponse publishedAt(@javax.annotation.Nonnull String publishedAt) {
@@ -360,7 +337,6 @@ public class PublishI18nProfileResponse {
     PublishI18nProfileResponse publishI18nProfileResponse = (PublishI18nProfileResponse) o;
     return Objects.equals(this.ok, publishI18nProfileResponse.ok) &&
         Objects.equals(this.profileId, publishI18nProfileResponse.profileId) &&
-        Objects.equals(this.chunk, publishI18nProfileResponse.chunk) &&
         Objects.equals(this.publishedAt, publishI18nProfileResponse.publishedAt) &&
         Objects.equals(this.version, publishI18nProfileResponse.version) &&
         Objects.equals(this.keyCount, publishI18nProfileResponse.keyCount) &&
@@ -372,7 +348,7 @@ public class PublishI18nProfileResponse {
 
   @Override
   public int hashCode() {
-    return Objects.hash(ok, profileId, chunk, publishedAt, version, keyCount, changed, purged, kvVerified, warning);
+    return Objects.hash(ok, profileId, publishedAt, version, keyCount, changed, purged, kvVerified, warning);
   }
 
   @Override
@@ -381,7 +357,6 @@ public class PublishI18nProfileResponse {
     sb.append("class PublishI18nProfileResponse {\n");
     sb.append("    ok: ").append(toIndentedString(ok)).append("\n");
     sb.append("    profileId: ").append(toIndentedString(profileId)).append("\n");
-    sb.append("    chunk: ").append(toIndentedString(chunk)).append("\n");
     sb.append("    publishedAt: ").append(toIndentedString(publishedAt)).append("\n");
     sb.append("    version: ").append(toIndentedString(version)).append("\n");
     sb.append("    keyCount: ").append(toIndentedString(keyCount)).append("\n");
@@ -407,10 +382,10 @@ public class PublishI18nProfileResponse {
 
   static {
     // a set of all properties/fields (JSON key names)
-    openapiFields = new HashSet<String>(Arrays.asList("ok", "profile_id", "chunk", "published_at", "version", "key_count", "changed", "purged", "kv_verified", "warning"));
+    openapiFields = new HashSet<String>(Arrays.asList("ok", "profile_id", "published_at", "version", "key_count", "changed", "purged", "kv_verified", "warning"));
 
     // a set of required properties/fields (JSON key names)
-    openapiRequiredFields = new HashSet<String>(Arrays.asList("ok", "profile_id", "chunk", "published_at", "version", "key_count", "changed", "purged", "kv_verified"));
+    openapiRequiredFields = new HashSet<String>(Arrays.asList("ok", "profile_id", "published_at", "version", "key_count", "changed", "purged", "kv_verified"));
   }
 
   /**
@@ -443,9 +418,6 @@ public class PublishI18nProfileResponse {
         JsonObject jsonObj = jsonElement.getAsJsonObject();
       if (!jsonObj.get("profile_id").isJsonPrimitive()) {
         throw new IllegalArgumentException(String.format(java.util.Locale.ROOT, "Expected the field `profile_id` to be a primitive type in the JSON string but got `%s`", jsonObj.get("profile_id").toString()));
-      }
-      if ((jsonObj.get("chunk") != null && !jsonObj.get("chunk").isJsonNull()) && !jsonObj.get("chunk").isJsonPrimitive()) {
-        throw new IllegalArgumentException(String.format(java.util.Locale.ROOT, "Expected the field `chunk` to be a primitive type in the JSON string but got `%s`", jsonObj.get("chunk").toString()));
       }
       if (!jsonObj.get("published_at").isJsonPrimitive()) {
         throw new IllegalArgumentException(String.format(java.util.Locale.ROOT, "Expected the field `published_at` to be a primitive type in the JSON string but got `%s`", jsonObj.get("published_at").toString()));

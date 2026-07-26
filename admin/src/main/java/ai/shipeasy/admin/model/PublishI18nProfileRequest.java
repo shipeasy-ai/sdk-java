@@ -46,34 +46,11 @@ import java.util.Set;
 import ai.shipeasy.admin.JSON;
 
 /**
- * Body for &#x60;POST /api/admin/i18n/profiles/{profileId}/publish&#x60;. The &#x60;chunk&#x60; is an audit label only.
+ * Body for &#x60;POST /api/admin/i18n/profiles/{profileId}/publish&#x60;. Publishing is profile-wide, so the body takes no options.
  */
 @javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.23.0")
 public class PublishI18nProfileRequest {
-  public static final String SERIALIZED_NAME_CHUNK = "chunk";
-  @SerializedName(SERIALIZED_NAME_CHUNK)
-  @javax.annotation.Nullable
-  private String chunk;
-
   public PublishI18nProfileRequest() {
-  }
-
-  public PublishI18nProfileRequest chunk(@javax.annotation.Nullable String chunk) {
-    this.chunk = chunk;
-    return this;
-  }
-
-  /**
-   * Optional chunk label to stamp on the audit log. Publishing is profile-wide regardless — the whole profile is snapshotted into one KV blob.
-   * @return chunk
-   */
-  @javax.annotation.Nullable
-  public String getChunk() {
-    return chunk;
-  }
-
-  public void setChunk(@javax.annotation.Nullable String chunk) {
-    this.chunk = chunk;
   }
 
 
@@ -86,20 +63,18 @@ public class PublishI18nProfileRequest {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    PublishI18nProfileRequest publishI18nProfileRequest = (PublishI18nProfileRequest) o;
-    return Objects.equals(this.chunk, publishI18nProfileRequest.chunk);
+    return true;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(chunk);
+    return Objects.hash();
   }
 
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
     sb.append("class PublishI18nProfileRequest {\n");
-    sb.append("    chunk: ").append(toIndentedString(chunk)).append("\n");
     sb.append("}");
     return sb.toString();
   }
@@ -118,7 +93,7 @@ public class PublishI18nProfileRequest {
 
   static {
     // a set of all properties/fields (JSON key names)
-    openapiFields = new HashSet<String>(Arrays.asList("chunk"));
+    openapiFields = new HashSet<String>(0);
 
     // a set of required properties/fields (JSON key names)
     openapiRequiredFields = new HashSet<String>(0);
@@ -145,9 +120,6 @@ public class PublishI18nProfileRequest {
         }
       }
         JsonObject jsonObj = jsonElement.getAsJsonObject();
-      if ((jsonObj.get("chunk") != null && !jsonObj.get("chunk").isJsonNull()) && !jsonObj.get("chunk").isJsonPrimitive()) {
-        throw new IllegalArgumentException(String.format(java.util.Locale.ROOT, "Expected the field `chunk` to be a primitive type in the JSON string but got `%s`", jsonObj.get("chunk").toString()));
-      }
   }
 
   public static class CustomTypeAdapterFactory implements TypeAdapterFactory {
