@@ -13,6 +13,7 @@ String head = Shipeasy.i18nScriptTag();
 // Overloads take (clientKey, profile) and (clientKey, profile, baseUrl) to
 // override a single tag — the client key is PUBLIC, never the server key.
 
-// Devtools overlay (Shift+Alt+S or ?se=1) — render it for your own team only.
+// Devtools overlay (Shift+Alt+S or ?se=1) — opens only for a signed-in
+// Shipeasy session, so gating it on staff/env is optional.
 String devtools = Shipeasy.devtoolsScriptTag();
 ```
