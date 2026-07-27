@@ -15,28 +15,47 @@ try {
 } catch (Exception e) {
     see(e)
         .causesThe("checkout")
-        .extras(Map.of("order_id", order.id()))
-        .to("use the backup processor");
+        .to("use the backup processor", Map.of("order_id", order.id()));
 }
 ```
 
 - `see(problem)` — start a report for a caught `Throwable` (or any object).
 - `.causesThe(subject)` — what part of the product is affected (default `"app"`).
-- `.extras(Map)` — structured context (merged on repeat; later wins).
-- `.to(outcome)` — **terminal**. Builds the wire event and fire-and-forgets the
-  send. `causesThe()` / `extras()` may be called in any order before `.to()`.
-  Calling `.to()` twice is a no-op; a chain that never calls `.to()` sends
-  nothing.
-- `.to(outcome, extras)` — the same terminal with the extras folded in inline
-  (equivalent to a final `.extras(...)`; a chained key still wins on collision),
-  so there is no ordering to remember:
-
-  ```java
-  see(e).causesThe("checkout").to("use cached prices", Map.of("order_id", oid));
-  ```
+- `.to(outcome, extras)` — **terminal**. Builds the wire event and
+  fire-and-forgets the send, with the extras folded in (structured context;
+  merged on repeat, later wins). Calling `.to()` twice is a no-op; a chain that
+  never calls `.to()` sends nothing.
+- `.extras(Map)` — standalone setter for the same context; reach for it only
+  when you genuinely cannot pass the context inline.
 
 Reporting never raises into your code — a failure in dispatch is swallowed and
 logged.
+
+### Where extras go in the chain
+
+`.causesThe(subject)` and `.to(outcome)` are two halves of one sentence and must
+stay adjacent, so fold the extras into the terminal:
+
+```java
+// PREFERRED — the consequence reads as one sentence:
+see(e).causesThe("checkout").to("use cached prices", Map.of("order_id", oid));
+```
+
+`.to()` returns `void`, so extras cannot trail the terminal in Java — the call
+below does not compile. And never split the sentence with `.extras()`:
+
+```java
+// WON'T COMPILE — .to() returns void:
+// see(e).causesThe("checkout").to("use cached prices").extras(Map.of("order_id", oid));
+
+// WRONG — extras wedged between the subject and the outcome. You read
+// "checkout … order_id … use cached prices" and lose the consequence.
+// see(e).causesThe("checkout").extras(Map.of("order_id", oid)).to("use cached prices");
+```
+
+When the context already exists *above* the catch, prefer
+[`See.addExtras`](#attach-context-from-anywhere-seeaddextras) over the inline
+form — it keeps the catch site a clean one-liner.
 
 ## Attach context from anywhere: `See.addExtras`
 

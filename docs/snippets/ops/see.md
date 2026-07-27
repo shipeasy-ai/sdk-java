@@ -27,17 +27,24 @@ import static ai.shipeasy.See.see;
 try {
     charge(order);
 } catch (Exception e) {
-    // .extras(map)         structured fields attached to the report; call it
-    //                      BEFORE .to, or pass extras inline as .to(outcome, map).
-    //                      (A stray .extras AFTER .to is a no-op — .to returns void.)
-    see(e).causesThe("checkout").extras(Map.of("order_id", oid)).to("use cached prices");
-
-    // equivalent — extras folded into the terminal, no ordering to remember:
+    // .to(outcome, map)    PREFERRED: fold the extras into the terminal. The
+    //                      consequence sentence stays whole and there is no
+    //                      ordering to remember.
     see(e).causesThe("checkout").to("use cached prices", Map.of("order_id", oid));
+
+    // .to returns void, so extras CANNOT trail it — this does not compile:
+    // see(e).causesThe("checkout").to("use cached prices").extras(Map.of("order_id", oid));
+
+    // NEVER: extras wedged between the subject and the outcome — it splits the
+    // consequence sentence in half and is hard to read.
+    // see(e).causesThe("checkout").extras(Map.of("order_id", oid)).to("use cached prices");
 }
 ```
 
 ### Attach context from anywhere with `See.addExtras(...)`
+
+Prefer this over the inline form whenever the context already exists *above*
+the catch — it keeps the catch site a clean one-liner.
 
 ```java
 import static ai.shipeasy.See.see;

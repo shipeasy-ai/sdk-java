@@ -94,13 +94,15 @@ import static ai.shipeasy.See.see;
 try {
     chargeCard(order);
 } catch (Exception e) {
-    see(e).causesThe("checkout").extras(Map.of("order_id", order.id()))
-          .to("use the backup processor");
+    see(e).causesThe("checkout")
+          .to("use the backup processor", Map.of("order_id", order.id()));
 }
 ```
 
-`.to(outcome)` is the terminal (fire-and-forget POST); fold extras in inline as
-`.to(outcome, Map.of(...))` to skip the ordering. Buffer per-request context from
+`.to(outcome, extras)` is the terminal (fire-and-forget POST) — fold extras in
+inline. Never `.causesThe(x).extras(...).to(y)`: it splits the consequence
+sentence in half. `.to` returns `void`, so extras cannot trail it. Buffer
+per-request context from
 any layer with `See.addExtras(Map.of("order_id", id))` — every later `see()` on
 the same thread carries it (thread-local; `AnonIdFilter` clears it per request,
 else call `See.clearExtras()`). Use
