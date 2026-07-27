@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.20.1 — 2026-07-27
+
+### Docs: where `see()` extras go in the chain
+
+`causesThe(subject)` and `.to(outcome)` are two halves of one sentence, so the
+docs no longer teach `causesThe(x).extras(map).to(y)` — wedging the debug
+payload between the subject and the outcome splits the consequence in half and
+is hard to read. That shape is now a documented hard ban.
+
+Java's `.to()` returns `void`, so extras cannot trail the terminal: pass them
+inline as `.to(outcome, extras)`, or buffer them earlier with `See.addExtras`
+when the context already exists above the catch. Docs, snippet and the bundled
+skill updated to match; no behaviour change.
+
+Also corrects `Engine.VERSION`, which still read `0.19.0` after the 0.20.0
+release — it is sent as `sdk_version` on every `see()` event.
+
 ## 0.20.0 — 2026-07-26
 
 ### The SSR bootstrap tag loads `/sdk/runtime.js`

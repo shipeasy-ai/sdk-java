@@ -33,7 +33,7 @@ public final class Engine implements AutoCloseable {
     private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
-    public static final String VERSION = "0.19.0";
+    public static final String VERSION = "0.20.1";
 
     private final String apiKey;
     private final String baseUrl;
