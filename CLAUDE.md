@@ -58,6 +58,10 @@ embedded skill drifts.
 - Bump **both** the `<version>` in `pom.xml` and `Engine.VERSION`
   (`src/main/java/ai/shipeasy/Engine.java`, sent on every `see()` event), and add a
   `CHANGELOG.md` entry.
+- Bump the coordinates the docs hand out too — the `<version>`/`implementation`
+  lines in `README.md`, `docs/pages/installation.md` and `docs/skill/SKILL.md`.
+  They were pinned at `0.10.0` while Central served `0.20.1`, so every reader
+  who copy-pasted got an SDK ten versions old.
 - Publishing is **push-to-`main`** (Maven Central via the publish workflow, which
   **gracefully skips** without the `CENTRAL_*`/`GPG_*` secrets — a green run there
   does not guarantee the artifact landed). A version-bumped push to `main` is the

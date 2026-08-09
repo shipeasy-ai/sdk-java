@@ -162,7 +162,7 @@ When the `user` you evaluate carries an identified attribute (a `user_id`,
 server-known identity on first paint, so a Java backend with a JS frontend never
 shows the anonymous-then-identified flip (the same identity buckets flags on both
 sides). An anonymous request — only an `anonymous_id`, or an empty user — emits no
-`data-user`. See `experiment-platform/18-identity-bucketing.md`.
+`data-user`. See [Identity & bucketing](https://docs.shipeasy.ai/get-started/identity-and-bucketing).
 
 ## Change listeners
 

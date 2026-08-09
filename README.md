@@ -39,7 +39,7 @@ doc page and snippet is also fetchable by URL — start from the manifest at
 <dependency>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.10.0</version>
+  <version>0.20.1</version>
 </dependency>
 ```
 
@@ -115,4 +115,4 @@ the [Testing](https://github.com/shipeasy-ai/sdk-java/blob/main/docs/pages/testi
 ## License
 
 See [LICENSE](https://github.com/shipeasy-ai/sdk-java/blob/main/LICENSE). Evaluation is tested against the cross-language
-MurmurHash3 vectors in `experiment-platform/04-evaluation.md`.
+MurmurHash3 vectors in [Rollouts & bucketing](https://docs.shipeasy.ai/flags/gates/rollouts).
