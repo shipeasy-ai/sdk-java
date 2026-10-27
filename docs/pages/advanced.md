@@ -26,7 +26,7 @@ enrolled.
 ## Private attributes
 
 Mark attribute names that may be used for targeting but must **never** be
-persisted in analytics (LD/Statsig `privateAttributes`). The server evaluates
+persisted in analytics (`privateAttributes`). The server evaluates
 locally, so private attrs never leave for evaluation; the only egress is
 `/collect`, and these keys are stripped from every outbound `track()` payload
 (and `see()` extras):
