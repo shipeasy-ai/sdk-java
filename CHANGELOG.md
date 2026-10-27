@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Package metadata: the POM `<url>` (core and admin) pointed at
+  `https://shipeasy.dev`, a domain we do not own that does not resolve. It is
+  `https://shipeasy.ai` now.
+
 ## 0.20.1 — 2026-07-27
 
 ### Docs: where `see()` extras go in the chain

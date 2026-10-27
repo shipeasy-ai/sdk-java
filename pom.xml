@@ -7,7 +7,7 @@
   <packaging>jar</packaging>
   <name>shipeasy</name>
   <description>Shipeasy server SDK for Java — flags, configs, experiments, metrics.</description>
-  <url>https://shipeasy.dev</url>
+  <url>https://shipeasy.ai</url>
 
   <licenses>
     <license><name>MIT</name><url>https://opensource.org/licenses/MIT</url></license>

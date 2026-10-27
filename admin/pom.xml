@@ -7,7 +7,7 @@
   <packaging>jar</packaging>
   <name>shipeasy-admin-java</name>
   <description>Shipeasy Admin API client for Java — generated from the OpenAPI spec (okhttp + gson). Optional companion to ai.shipeasy:shipeasy.</description>
-  <url>https://shipeasy.dev</url>
+  <url>https://shipeasy.ai</url>
 
   <licenses>
     <license><name>MIT</name><url>https://opensource.org/licenses/MIT</url></license>
