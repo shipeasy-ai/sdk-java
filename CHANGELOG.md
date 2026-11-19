@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.21.0 — 2026-11-19
+
+### see() reports carry the browser's request correlation token
+
+`AnonIdFilter` now reads the `X-SE-Correlation` header the browser SDK sends on
+every same-origin request, and every `see()` fired while serving that request
+carries it as `correlation_id`. Shipeasy joins on it to record the server
+exception as the cause of the browser error it produced. Before this no Java
+report carried the token, so a client error was never linked to the server
+exception behind it. Malformed tokens (anything outside `[A-Za-z0-9-]{8,64}`)
+are dropped, never sent; the token is cleared at the end of the request with
+the ambient extras (`See.clearExtras()` clears it too). Non-servlet stacks can
+set it with `SeeExtras.setCorrelationId(...)`.
+
+### Package metadata
 
 - Package metadata: the POM `<url>` (core and admin) pointed at
   `https://shipeasy.dev`, a domain we do not own that does not resolve. It is

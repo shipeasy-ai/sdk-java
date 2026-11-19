@@ -34,8 +34,17 @@ import java.io.IOException;
  * <p>The {@code jakarta.servlet-api} dependency is {@code provided} scope — your
  * servlet container already supplies it at runtime, so this adds nothing to your
  * deployment. Non-servlet stacks can use {@link AnonId} directly instead.
+ *
+ * <p>It also reads the browser SDK's {@code X-SE-Correlation} request header
+ * into the request-local {@code see()} context ({@link SeeExtras}), so every
+ * {@code see()} fired while serving the request carries that
+ * {@code correlation_id} — the token the platform joins on to link the
+ * browser's error to the server exception behind it.
  */
 public final class AnonIdFilter implements Filter {
+
+    /** Request header the browser SDK sends on every same-origin request. */
+    public static final String CORRELATION_HEADER = "X-SE-Correlation";
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
@@ -53,11 +62,12 @@ public final class AnonIdFilter implements Filter {
             res.addHeader("Set-Cookie", AnonId.buildSetCookie(id, isSecure(req)));
         }
         AnonId.setCurrent(id);
+        SeeExtras.setCorrelationId(req.getHeader(CORRELATION_HEADER));
         try {
             chain.doFilter(request, response);
         } finally {
-            // Don't leak the id — or any ambient see() extras — onto the next
-            // request handled by this pooled thread.
+            // Don't leak the id — or any ambient see() extras / correlation
+            // token — onto the next request handled by this pooled thread.
             AnonId.clear();
             SeeExtras.clear();
         }

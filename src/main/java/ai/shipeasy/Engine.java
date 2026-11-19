@@ -33,7 +33,7 @@ public final class Engine implements AutoCloseable {
     private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
-    public static final String VERSION = "0.20.1";
+    public static final String VERSION = "0.21.0";
 
     private final String apiKey;
     private final String baseUrl;
@@ -1050,7 +1050,8 @@ public final class Engine implements AutoCloseable {
                 extras,
                 "server",
                 VERSION,
-                env);
+                env,
+                SeeExtras.correlationId());
             if (!seeLimiter.shouldSend(ev)) return;
             Map<String, Object> body = Map.of("events", List.of(ev));
             scheduler.execute(() -> {

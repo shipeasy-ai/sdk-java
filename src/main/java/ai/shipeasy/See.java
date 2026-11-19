@@ -189,6 +189,22 @@ public final class See {
             String side,
             String sdkVersion,
             String env) {
+        return buildSeeEvent(problem, subject, outcome, extras, side, sdkVersion, env, null);
+    }
+
+    /**
+     * As above, plus the browser's request correlation token: emitted as
+     * {@code correlation_id} only when it is well-formed (malformed → dropped).
+     */
+    static Map<String, Object> buildSeeEvent(
+            Object problem,
+            String subject,
+            String outcome,
+            Map<String, Object> extras,
+            String side,
+            String sdkVersion,
+            String env,
+            String correlationId) {
         String errorType;
         String message;
         String stack = null;
@@ -229,6 +245,8 @@ public final class See {
         Map<String, Object> clean = sanitizeExtras(extras);
         if (clean != null) ev.put("extras", clean);
         if (env != null && !env.isEmpty()) ev.put("env", env);
+        String corr = SeeExtras.cleanCorrelation(correlationId);
+        if (corr != null) ev.put("correlation_id", corr);
         return ev;
     }
 

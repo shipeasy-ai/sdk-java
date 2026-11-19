@@ -86,6 +86,17 @@ servlet filter); in a background job or script call `See.clearExtras()` when a
 unit of work ends. `See.addExtras` works even before an engine is configured and
 never throws.
 
+### Linking a browser error to the server exception behind it
+
+The browser SDK (`@shipeasy/sdk/client`) sends a per-request token on the
+`X-SE-Correlation` header of every same-origin request. `AnonIdFilter` reads it,
+and every `see()` fired while serving that request carries it as
+`correlation_id`. Shipeasy joins the browser's report and this server report on
+that token and records the server exception as the browser error's cause, so
+the two are triaged as one issue instead of two. Nothing to call — register
+`AnonIdFilter` (see above) and it is wired. Malformed tokens are dropped, and
+the token is cleared at the end of the request with the ambient extras.
+
 ## Dispatch
 
 The static `ai.shipeasy.See.see(...)` dispatches against the engine that
