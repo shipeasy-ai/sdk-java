@@ -21,7 +21,7 @@ Maven (`ai.shipeasy:shipeasy`):
 <dependency>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.10.0</version>
+  <version>0.21.0</version>
 </dependency>
 ```
 
@@ -110,6 +110,10 @@ else call `See.clearExtras()`). Use
 nothing); `violation("name")...to("...")` for non-throwable problems. Reference:
 <https://shipeasy-ai.github.io/sdk-java/pages/error-reporting.md> · snippet
 <https://shipeasy-ai.github.io/sdk-java/snippets/ops/see.md>
+
+`AnonIdFilter` also reads the browser SDK's `X-SE-Correlation` header, so every
+`see()` in that request carries `correlation_id` and Shipeasy links the
+browser's error to this server exception — no code needed.
 
 ## Testing (no network, no key)
 

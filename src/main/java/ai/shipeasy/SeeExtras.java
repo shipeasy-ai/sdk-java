@@ -2,6 +2,7 @@ package ai.shipeasy;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Ambient per-request {@code see()} extras — a thread-local buffer of context
@@ -29,6 +30,15 @@ import java.util.Map;
 public final class SeeExtras {
 
     private static final ThreadLocal<Map<String, Object>> BUFFER = new ThreadLocal<>();
+
+    /**
+     * The browser's per-request correlation token ({@code X-SE-Correlation}),
+     * held next to the ambient extras and cleared with them.
+     */
+    private static final ThreadLocal<String> CORRELATION = new ThreadLocal<>();
+
+    /** Same shape the collector accepts; anything else is dropped, never sent. */
+    private static final Pattern CORRELATION_RE = Pattern.compile("^[A-Za-z0-9-]{8,64}$");
 
     private SeeExtras() {}
 
@@ -63,10 +73,42 @@ public final class SeeExtras {
     }
 
     /**
-     * Drop the current thread's buffer so extras never leak to the next request
-     * handled by this pooled thread.
+     * Park the browser SDK's per-request correlation token for the current
+     * thread. The browser mints one token per same-origin request and sends it
+     * on {@code X-SE-Correlation}; every {@code see()} fired later on this
+     * thread carries it as {@code correlation_id}, which is what lets the
+     * platform link the browser's error to this server exception.
+     * {@link AnonIdFilter} calls this for you. A malformed / blank value clears
+     * it. Never throws.
+     */
+    public static void setCorrelationId(String value) {
+        try {
+            String clean = cleanCorrelation(value);
+            if (clean == null) CORRELATION.remove();
+            else CORRELATION.set(clean);
+        } catch (Throwable ignore) {
+            // Never raise out of context bookkeeping.
+        }
+    }
+
+    /** The current thread's correlation token, or {@code null}. */
+    static String correlationId() {
+        return CORRELATION.get();
+    }
+
+    /** The trimmed token when it matches the collector's shape, else {@code null}. */
+    static String cleanCorrelation(String value) {
+        if (value == null) return null;
+        String s = value.trim();
+        return CORRELATION_RE.matcher(s).matches() ? s : null;
+    }
+
+    /**
+     * Drop the current thread's buffer (and correlation token) so neither leaks
+     * to the next request handled by this pooled thread.
      */
     public static void clear() {
         BUFFER.remove();
+        CORRELATION.remove();
     }
 }
