@@ -21,7 +21,7 @@ Maven (`ai.shipeasy:shipeasy`):
 <dependency>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.23.0</version>
+  <version>0.24.0</version>
 </dependency>
 ```
 
@@ -128,6 +128,11 @@ unexpired signature; an unsigned `?se_gate_` param alone stays client-only. Loca
 with `.devOverrides(true)` to also read the unsigned `se_ov_dev` cookie; honored
 only in a non-production process (else ignored with one warning), below the
 signed cookie in precedence.
+Frontend and API on sibling subdomains: the browser SDK scopes the cookies to the
+registrable domain, and for token-auth APIs sends `X-Shipeasy-Overrides`
+(cookie-header syntax; allow it in CORS). `AnonIdFilter` reads it; the manual
+scope takes it as `withRequestOverrides(cookie, overridesHeader, body)`. The
+`Cookie` header wins per name; same verification and guards.
 Reference: <https://shipeasy-ai.github.io/sdk-java/pages/advanced.md>
 
 ## Testing (no network, no key)

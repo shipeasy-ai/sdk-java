@@ -13,20 +13,20 @@
 <dependency>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.23.0</version>
+  <version>0.24.0</version>
 </dependency>
 ```
 
 ### Gradle (Kotlin DSL)
 
 ```kotlin
-implementation("ai.shipeasy:shipeasy:0.23.0")
+implementation("ai.shipeasy:shipeasy:0.24.0")
 ```
 
 ### Gradle (Groovy DSL)
 
 ```groovy
-implementation 'ai.shipeasy:shipeasy:0.23.0'
+implementation 'ai.shipeasy:shipeasy:0.24.0'
 ```
 
 ## Optional, `provided`-scope dependencies

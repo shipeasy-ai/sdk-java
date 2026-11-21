@@ -24,7 +24,7 @@ final class RequestOverrides {
      * (needs the served key) merged over the opt-in dev-only {@code se_ov_dev}
      * (per name, signed wins). {@code null} when nothing applies.
      */
-    static OverrideCookie.Overrides verify(String cookieHeader) {
+    static OverrideCookie.Overrides verify(String cookieHeader, String overridesHeader) {
         try {
             Engine e = Shipeasy.engine();
             if (e == null) return null;
@@ -32,13 +32,15 @@ final class RequestOverrides {
             String key = e.overrideKey();
             String keyId = e.overrideKeyId();
             if (key != null && keyId != null) {
+                // Cookie header wins; X-Shipeasy-Overrides (cookie syntax) fills in when absent.
                 String raw = OverrideCookie.extract(cookieHeader);
+                if (raw == null) raw = OverrideCookie.extract(overridesHeader);
                 if (raw != null) {
                     signed = OverrideCookie.verify(raw, key, keyId, System.currentTimeMillis() / 1000L);
                 }
             }
             // Not honored => don't even look for the dev cookie.
-            OverrideCookie.Overrides dev = e.devOverridesHonored() ? OverrideCookie.parseDev(cookieHeader) : null;
+            OverrideCookie.Overrides dev = e.devOverridesHonored() ? OverrideCookie.parseDev(cookieHeader, overridesHeader) : null;
             OverrideCookie.Overrides ov = merge(signed, dev);
             return ov == null || ov.isEmpty() ? null : ov;
         } catch (Throwable t) {
@@ -59,9 +61,9 @@ final class RequestOverrides {
     }
 
     /** Enter a scope; returns the previous value to hand back to {@link #restore}. */
-    static OverrideCookie.Overrides enter(String cookieHeader) {
+    static OverrideCookie.Overrides enter(String cookieHeader, String overridesHeader) {
         OverrideCookie.Overrides prev = CURRENT.get();
-        set(verify(cookieHeader));
+        set(verify(cookieHeader, overridesHeader));
         return prev;
     }
 
@@ -73,8 +75,8 @@ final class RequestOverrides {
         if (ov == null) CURRENT.remove(); else CURRENT.set(ov);
     }
 
-    static <T> T with(String cookieHeader, Supplier<T> body) {
-        OverrideCookie.Overrides prev = enter(cookieHeader);
+    static <T> T with(String cookieHeader, String overridesHeader, Supplier<T> body) {
+        OverrideCookie.Overrides prev = enter(cookieHeader, overridesHeader);
         try {
             return body.get();
         } finally {

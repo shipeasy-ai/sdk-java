@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.24.0 — 2026-11-21
+
+### Overrides reach APIs on sibling subdomains (shipeasy ops #714)
+
+`AnonIdFilter` also reads the `X-Shipeasy-Overrides` request header (cookie-header
+syntax carrying `se_ov` / `se_ov_dev`), for token-auth APIs on a different
+subdomain than the frontend that never receive the cookie. The `Cookie` header
+wins per cookie name; the header fills in when absent; the same signature
+verification and `devOverrides` / non-production guards apply. New overloads
+`Shipeasy.withRequestOverrides(cookieHeader, overridesHeader, Runnable | Supplier)`;
+the two-argument forms are unchanged.
+
 ## 0.23.0 — 2026-11-21
 
 ### Dev-only `se_ov_dev` URL override cookie (shipeasy ops #714)

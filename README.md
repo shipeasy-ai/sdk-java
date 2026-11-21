@@ -39,7 +39,7 @@ doc page and snippet is also fetchable by URL — start from the manifest at
 <dependency>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.23.0</version>
+  <version>0.24.0</version>
 </dependency>
 ```
 

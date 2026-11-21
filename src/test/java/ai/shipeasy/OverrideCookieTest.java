@@ -277,4 +277,94 @@ class OverrideCookieTest {
             assertTrue(c.getFlag("prog"));         // dev-only name still applies
         });
     }
+
+    // ---- X-Shipeasy-Overrides header fallback ----
+
+    @Test
+    void headerOnlySignedCookieApplies() {
+        use(true);
+        Client c = new Client(Map.of("user_id", "u1"));
+        Shipeasy.withRequestOverrides(null, "se_ov=" + COOKIE, () -> assertTrue(c.getFlag("lobby_hold")));
+        boolean v = Shipeasy.withRequestOverrides("a=1", "se_ov=" + COOKIE, () -> c.getFlag("lobby_hold"));
+        assertTrue(v);
+        Shipeasy.withRequestOverrides(null, "se_ov=" + TAMPERED, () -> assertFalse(c.getFlag("lobby_hold")));
+    }
+
+    @Test
+    void headerOnlyDevCookieOnlyUnderGuards() {
+        Shipeasy.useEngineForTest(devEngine(false, false), Shipeasy.IDENTITY);
+        Client off = new Client(Map.of("user_id", "u1"));
+        Shipeasy.withRequestOverrides(null, "se_ov_dev=" + DEV, () -> assertFalse(off.getFlag("lobby_hold")));
+        Shipeasy.useEngineForTest(devEngine(false, true), Shipeasy.IDENTITY);
+        Client on = new Client(Map.of("user_id", "u1"));
+        Shipeasy.withRequestOverrides(null, "se_ov_dev=" + DEV, () -> assertTrue(on.getFlag("lobby_hold")));
+    }
+
+    @Test
+    void cookieBeatsHeaderForSameName() {
+        use(true);
+        Client c = new Client(Map.of("user_id", "u1"));
+        // Cookie header has a tampered se_ov (name present => it wins and fails closed);
+        // the header's valid one must not rescue it.
+        Shipeasy.withRequestOverrides("se_ov=" + TAMPERED, "se_ov=" + COOKIE, () -> assertFalse(c.getFlag("lobby_hold")));
+        // dev: cookie value wins over the header's
+        Shipeasy.useEngineForTest(devEngine(false, true), Shipeasy.IDENTITY);
+        Client d = new Client(Map.of("user_id", "u1"));
+        String offDev = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+            "{\"gates\":{\"lobby_hold\":false}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Shipeasy.withRequestOverrides("se_ov_dev=" + offDev, "se_ov_dev=" + DEV, () -> assertFalse(d.getFlag("lobby_hold")));
+    }
+
+    @Test
+    void filterReadsOverridesHeader() throws Exception {
+        use(true);
+        Client c = new Client(Map.of("user_id", "u1"));
+        AtomicReference<Boolean> seen = new AtomicReference<>();
+        HttpServletRequest req = (HttpServletRequest) Proxy.newProxyInstance(
+            getClass().getClassLoader(), new Class<?>[] {HttpServletRequest.class},
+            (p, m, a) -> {
+                switch (m.getName()) {
+                    case "getHeader": return "X-Shipeasy-Overrides".equals(a[0]) ? "se_ov=" + COOKIE : null;
+                    case "isSecure": return false;
+                    default: return null;
+                }
+            });
+        HttpServletResponse res = (HttpServletResponse) Proxy.newProxyInstance(
+            getClass().getClassLoader(), new Class<?>[] {HttpServletResponse.class}, (p, m, a) -> null);
+        new AnonIdFilter().doFilter(req, res, (rq, rs) -> seen.set(c.getFlag("lobby_hold")));
+        assertEquals(Boolean.TRUE, seen.get());
+    }
+
+    @Test
+    void unrelatedSingleCookieIsNotABareValue() {
+        assertNull(OverrideCookie.extract("theme=a.b"));
+        assertNull(OverrideCookie.parseDev("theme=abc"));
+        use(true);
+        Client c = new Client(Map.of("user_id", "u1"));
+        // an unrelated cookie must not block the header fallback
+        Shipeasy.withRequestOverrides("theme=a.b", "se_ov=" + COOKIE, () -> assertTrue(c.getFlag("lobby_hold")));
+    }
+
+    // The suite pins shipeasy.env=production (InertInternalReportExtension); the
+    // snapshot-engine dev tests above pass via localMode, so ALSO exercise the real
+    // env-derived path with an explicit non-production env, restored afterwards.
+    @Test
+    void devCookieHonoredViaExplicitNonProdEnv() {
+        String prev = System.getProperty("shipeasy.env");
+        System.setProperty("shipeasy.env", "development");
+        try {
+            Engine e = new Engine("k", "http://127.0.0.1:1", "dev", true);
+            e.setDevOverrides(true);
+            assertTrue(e.devOverridesHonored());
+            assertFalse(e.devOverridesWarned());
+            e.applyDataForTest(Map.of("gates", Map.of("lobby_hold", Map.of("enabled", true, "rolloutPct", 0, "salt", "s"))), null);
+            Shipeasy.useEngineForTest(e, Shipeasy.IDENTITY);
+            Client c = new Client(Map.of("user_id", "u1"));
+            Shipeasy.withRequestOverrides(null, "se_ov_dev=" + DEV, () -> assertTrue(c.getFlag("lobby_hold")));
+            assertFalse(c.getFlag("lobby_hold"));
+        } finally {
+            if (prev == null) System.clearProperty("shipeasy.env"); else System.setProperty("shipeasy.env", prev);
+            Shipeasy.resetForTest();
+        }
+    }
 }
