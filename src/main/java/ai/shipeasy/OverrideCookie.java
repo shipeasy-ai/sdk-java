@@ -101,7 +101,11 @@ final class OverrideCookie {
         byte[] expected = hmac(sessionKey, body);
         if (!MessageDigest.isEqual(expected, b64uDecode(sig))) return null;
 
-        Map<String, Object> ovMap = ov instanceof Map ? (Map<String, Object>) ov : Collections.emptyMap();
+        return fromMaps(ov instanceof Map ? (Map<String, Object>) ov : Collections.emptyMap());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Overrides fromMaps(Map<String, Object> ovMap) {
         Map<String, Boolean> gates = new HashMap<>();
         Object g = ovMap.get("gates");
         if (g instanceof Map) {
@@ -126,20 +130,44 @@ final class OverrideCookie {
         return new Overrides(gates, configs, exps);
     }
 
+    /** Dev-only unsigned cookie: base64url(JSON {gates,configs,exps}). */
+    static final String DEV_COOKIE_NAME = "se_ov_dev";
+
+    /**
+     * Parse the unsigned {@code se_ov_dev} cookie out of a {@code Cookie:} header
+     * (or a bare value). {@code null} when absent or malformed (never throws).
+     */
+    static Overrides parseDev(String input) {
+        try {
+            String raw = extractNamed(input, DEV_COOKIE_NAME, false);
+            if (raw == null) return null;
+            Object parsed = MAPPER.readValue(new String(b64uDecode(raw), StandardCharsets.UTF_8), Object.class);
+            if (!(parsed instanceof Map)) return null;
+            return fromMaps((Map<String, Object>) parsed);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     /**
      * Extract the raw {@code se_ov} value from either a bare cookie value or a
      * full {@code Cookie:} header ({@code a=1; se_ov=...; b=2}), URL-decoding
      * the value. Returns {@code null} if absent.
      */
     static String extract(String input) {
+        return extractNamed(input, COOKIE_NAME, true);
+    }
+
+    private static String extractNamed(String input, String name, boolean signed) {
         if (input == null || input.isEmpty()) return null;
-        if (!input.contains(";") && !input.contains("se_ov=")) {
-            return input.contains(".") ? input : null;
+        if (!input.contains(";") && !input.contains(name + "=")) {
+            // bare value: signed is body.sig; dev has no dot and no '='
+            return signed ? (input.contains(".") ? input : null) : (input.contains("=") ? null : input);
         }
         for (String part : input.split(";")) {
             int eq = part.indexOf('=');
             if (eq < 0) continue;
-            if (part.substring(0, eq).trim().equals(COOKIE_NAME)) {
+            if (part.substring(0, eq).trim().equals(name)) {
                 try {
                     // URLDecoder maps '+' to space; cookie values are percent-encoded
                     // only (decodeURIComponent semantics), so protect '+'.

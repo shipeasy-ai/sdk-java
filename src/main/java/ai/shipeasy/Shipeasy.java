@@ -67,6 +67,7 @@ public final class Shipeasy {
         Boolean isNetworkEnabled;
         Boolean isTrackingEnabled;
         boolean disableInternalErrorReporting;
+        boolean devOverrides;
         boolean poll;
         java.util.List<String> privateAttributes = java.util.List.of();
         StickyBucketStore stickyStore;
@@ -156,6 +157,17 @@ public final class Shipeasy {
         /** Override the edge base URL (default {@code https://api.shipeasy.ai}). */
         public Options baseUrl(String baseUrl) {
             this.baseUrl = baseUrl;
+            return this;
+        }
+
+        /**
+         * Opt in (default {@code false}) to the unsigned dev-only {@code se_ov_dev}
+         * URL-override cookie on server reads. Honored only in a non-production
+         * process (see {@link Env#isProductionEnv}); in production it is ignored
+         * with one warning. Never active in production.
+         */
+        public Options devOverrides(boolean devOverrides) {
+            this.devOverrides = devOverrides;
             return this;
         }
 
@@ -259,6 +271,7 @@ public final class Shipeasy {
             e.privateAttributes(opts.privateAttributes).stickyStore(opts.stickyStore);
             e.tagDefaults(opts.clientKey, opts.profile, opts.projectId, opts.cdnBaseUrl);
             e.setInternalErrorReporting(!opts.disableInternalErrorReporting);
+            e.setDevOverrides(opts.devOverrides);
             attributes = opts.attributes;
             engine = e;
             // Fetch lifecycle owned by configure (the docs never tell a user to
@@ -353,6 +366,13 @@ public final class Shipeasy {
         String profile;
         String projectId;
         String cdnBaseUrl;
+        boolean devOverrides;
+
+        /** Same as {@link Options#devOverrides}; test engines count as non-production. */
+        public TestOptions devOverrides(boolean devOverrides) {
+            this.devOverrides = devOverrides;
+            return this;
+        }
 
         /** Same as {@link Options#clientKey} — the PUBLIC client key for the SSR tags. */
         public TestOptions clientKey(String clientKey) {
@@ -494,6 +514,7 @@ public final class Shipeasy {
 
     private static void applyOverrides(Engine e, TestOptions o) {
         e.tagDefaults(o.clientKey, o.profile, o.projectId, o.cdnBaseUrl);
+        e.setDevOverrides(o.devOverrides);
         o.flags.forEach((name, value) -> e.overrideFlag(name, value));
         o.configs.forEach(e::overrideConfig);
         o.experiments.forEach((name, v) -> e.overrideExperiment(name, v.group, v.params));

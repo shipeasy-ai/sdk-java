@@ -15,6 +15,13 @@ Supplier)`. Precedence: programmatic `overrideFlag` > signed cookie > evaluation
 Fail-closed: no served key, bad/expired signature or wrong key id means no
 overrides; unsigned `?se_gate_` params stay client-only.
 
+Opt-in dev-only addition: `Options.devOverrides(true)` (and
+`TestOptions.devOverrides`) also reads an unsigned `se_ov_dev` cookie
+(base64url JSON of gates/configs/exps) so `?se_gate_x=true` reaches server reads
+on a local stack without DevTools sign-in. Honored only when the option is on AND
+the process is non-production; in production it is ignored with one warning and
+the cookie is never read. Signed `se_ov` wins per name.
+
 ## 0.21.0 — 2026-11-19
 
 ### see() reports carry the browser's request correlation token
