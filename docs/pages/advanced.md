@@ -124,6 +124,27 @@ parameter on its own is **client-only by design** — it never reaches server
 reads. The scope is thread-local; if you hand work to another thread, wrap it
 again with the same header.
 
+### Local dev without sign-in — `devOverrides` (`se_ov_dev`)
+
+On a local/dev/test stack you can opt in to an **unsigned** cookie so
+`?se_gate_x=true` reaches server reads without DevTools sign-in. The dev browser
+build writes `se_ov_dev` (base64url JSON `{"gates":{},"configs":{},"exps":{}}`);
+the server reads it only when you turn the option on:
+
+```java
+Shipeasy.configure(Shipeasy.options(System.getenv("SHIPEASY_SERVER_KEY"))
+    .devOverrides(true)); // default false
+// tests: Shipeasy.configureForTesting(new Shipeasy.TestOptions().devOverrides(true))
+```
+
+Two guards, both required: the option is `true` **and** the process is
+non-production (`shipeasy.env` system property, then `SHIPEASY_ENV` / `APP_ENV` /
+`ENV`; unset means production; test/offline engines count as non-production).
+In a production process the option is ignored with one logged warning and the
+cookie is never even read, so it is never active in production. Precedence per
+name: programmatic `overrideFlag` > signed `se_ov` > `se_ov_dev` > evaluation;
+reason stays `OVERRIDE`.
+
 ## Server-side rendering (SSR) bootstrap
 
 Emit the request's evaluated flags as a declarative `<script>` tag so the

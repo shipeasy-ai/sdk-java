@@ -33,7 +33,7 @@ public final class Engine implements AutoCloseable {
     private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
-    public static final String VERSION = "0.22.0";
+    public static final String VERSION = "0.23.0";
 
     private final String apiKey;
     private final String baseUrl;
@@ -317,6 +317,34 @@ public final class Engine implements AutoCloseable {
      */
     public void overrideExperiment(String name, String group, Object params) {
         experimentOverrides.put(name, new ExperimentResult(true, group, params));
+    }
+
+    private volatile boolean devOverridesHonored;
+    private volatile boolean devOverridesWarned;
+
+    /**
+     * Opt in to the unsigned dev-only {@code se_ov_dev} URL-override cookie.
+     * Honored ONLY when {@code requested} AND the process is non-production
+     * ({@link Env#isProductionEnv}; unset env means production; test/offline
+     * engines count as non-production). Requested in production: ignored, one
+     * warning logged.
+     */
+    void setDevOverrides(boolean requested) {
+        boolean nonProd = localMode || !Env.isProductionEnv(env);
+        devOverridesHonored = requested && nonProd;
+        if (requested && !nonProd && !devOverridesWarned) {
+            devOverridesWarned = true;
+            Log.warn("devOverrides is enabled in a production process; ignoring it (se_ov_dev is dev-only)");
+        }
+    }
+
+    /** True when the {@code se_ov_dev} cookie may be read at all. */
+    boolean devOverridesHonored() {
+        return devOverridesHonored;
+    }
+
+    boolean devOverridesWarned() {
+        return devOverridesWarned;
     }
 
     /** Project override verify key (base64url) served on {@code /sdk/flags}; {@code null} = overrides never trusted. */

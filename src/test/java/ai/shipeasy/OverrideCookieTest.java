@@ -198,4 +198,83 @@ class OverrideCookieTest {
         assertNull(RequestOverrides.current());
         assertFalse(c.getFlag("lobby_hold"));
     }
+
+    // ---- unsigned dev-only se_ov_dev cookie ----
+    static final String DEV = "eyJnYXRlcyI6eyJsb2JieV9ob2xkIjp0cnVlLCJvbGRfbmF2IjpmYWxzZX0sImNvbmZpZ3MiOnsiYmFubmVyIjp7InRleHQiOiJoaSJ9fSwiZXhwcyI6eyJjaGVja291dF9leHAiOiJ0cmVhdG1lbnQifX0";
+
+    private static Engine devEngine(boolean withKey, boolean option) {
+        Engine e = engine(withKey);   // snapshot engine = non-production
+        e.setDevOverrides(option);
+        return e;
+    }
+
+    @Test
+    void devCookieDecodesVector() {
+        OverrideCookie.Overrides ov = OverrideCookie.parseDev("a=1; se_ov_dev=" + DEV + "; b=2");
+        assertNotNull(ov);
+        assertEquals(Map.of("lobby_hold", true, "old_nav", false), ov.gates);
+        assertEquals(Map.of("banner", Map.of("text", "hi")), ov.configs);
+        assertEquals(Map.of("checkout_exp", "treatment"), ov.exps);
+        assertNotNull(OverrideCookie.parseDev(DEV));
+        assertNotNull(OverrideCookie.parseDev("se_ov_dev=" + DEV.replace("e", "%65")));
+        assertNull(OverrideCookie.parseDev("se_ov_dev=!!!notjson"));
+        assertNull(OverrideCookie.parseDev("a=1"));
+    }
+
+    @Test
+    void devCookieIgnoredWhenOptionOff() {
+        Shipeasy.useEngineForTest(devEngine(false, false), Shipeasy.IDENTITY);
+        Client c = new Client(Map.of("user_id", "u1"));
+        Shipeasy.withRequestOverrides("se_ov_dev=" + DEV, () -> {
+            assertNull(RequestOverrides.current());
+            assertFalse(c.getFlag("lobby_hold"));
+        });
+    }
+
+    @Test
+    void devCookieHonoredInNonProdWithOption() {
+        Shipeasy.useEngineForTest(devEngine(false, true), Shipeasy.IDENTITY);
+        Client c = new Client(Map.of("user_id", "u1"));
+        Shipeasy.withRequestOverrides("se_ov_dev=" + DEV, () -> {
+            assertEquals(FlagDetail.OVERRIDE, c.getFlagDetail("lobby_hold").reason());
+            assertTrue(c.getFlag("lobby_hold"));
+            assertFalse(c.getFlag("old_nav"));
+            assertEquals(Map.of("text", "hi"), c.getConfig("banner"));
+            assertEquals("treatment", c.universe("u").assign().group());
+        });
+        assertFalse(c.getFlag("lobby_hold"));
+    }
+
+    @Test
+    void devCookieIgnoredInProductionWithWarning() {
+        String prev = System.getProperty("shipeasy.env");
+        System.setProperty("shipeasy.env", "production");
+        try {
+            Engine e = new Engine("k", "http://127.0.0.1:1", "prod", true);
+            e.setDevOverrides(true);
+            assertFalse(e.devOverridesHonored());
+            assertTrue(e.devOverridesWarned());
+            e.setDevOverrides(true);   // still a single warning flag
+            Shipeasy.useEngineForTest(e, Shipeasy.IDENTITY);
+            Client c = new Client(Map.of("user_id", "u1"));
+            Shipeasy.withRequestOverrides("se_ov_dev=" + DEV, () -> assertNull(RequestOverrides.current()));
+        } finally {
+            if (prev == null) System.clearProperty("shipeasy.env"); else System.setProperty("shipeasy.env", prev);
+            Shipeasy.resetForTest();
+        }
+    }
+
+    @Test
+    void signedCookieBeatsDevCookiePerName() {
+        Shipeasy.useEngineForTest(devEngine(true, true), Shipeasy.IDENTITY);
+        Client c = new Client(Map.of("user_id", "u1"));
+        // dev says lobby_hold=false, extra=true; signed says lobby_hold=true.
+        String json = "{\"gates\":{\"lobby_hold\":false,\"prog\":true}}";
+        String dev = java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Shipeasy.withRequestOverrides("se_ov=" + COOKIE + "; se_ov_dev=" + dev, () -> {
+            assertTrue(c.getFlag("lobby_hold"));   // signed wins
+            assertTrue(c.getFlag("prog"));         // dev-only name still applies
+        });
+    }
 }

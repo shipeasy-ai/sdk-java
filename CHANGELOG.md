@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.23.0 — 2026-11-21
+
+### Dev-only `se_ov_dev` URL override cookie (shipeasy ops #714)
+
+Opt-in: `Options.devOverrides(true)` (and
+`TestOptions.devOverrides`) also reads an unsigned `se_ov_dev` cookie
+(base64url JSON of gates/configs/exps) so `?se_gate_x=true` reaches server reads
+on a local stack without DevTools sign-in. Honored only when the option is on AND
+the process is non-production; in production it is ignored with one warning and
+the cookie is never read. Signed `se_ov` wins per name.
+
 ## 0.22.0 — 2026-11-21
 
 ### Signed DevTools overrides reach server-side reads (shipeasy ops #714)

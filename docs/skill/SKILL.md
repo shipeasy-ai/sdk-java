@@ -21,7 +21,7 @@ Maven (`ai.shipeasy:shipeasy`):
 <dependency>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.22.0</version>
+  <version>0.23.0</version>
 </dependency>
 ```
 
@@ -124,7 +124,10 @@ verifies it once per request; other stacks wrap handling in
 or Supplier). `Client` reads inside then honor it (`getFlagDetail` reason
 `OVERRIDE`). Precedence: `Shipeasy.overrideFlag` > cookie > evaluation.
 Fail-closed: needs the project's override key served by Shipeasy, a valid
-unexpired signature; an unsigned `?se_gate_` param alone stays client-only.
+unexpired signature; an unsigned `?se_gate_` param alone stays client-only. Local dev only: opt in
+with `.devOverrides(true)` to also read the unsigned `se_ov_dev` cookie; honored
+only in a non-production process (else ignored with one warning), below the
+signed cookie in precedence.
 Reference: <https://shipeasy-ai.github.io/sdk-java/pages/advanced.md>
 
 ## Testing (no network, no key)
