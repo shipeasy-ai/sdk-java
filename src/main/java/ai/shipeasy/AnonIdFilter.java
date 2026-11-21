@@ -35,6 +35,12 @@ import java.io.IOException;
  * servlet container already supplies it at runtime, so this adds nothing to your
  * deployment. Non-servlet stacks can use {@link AnonId} directly instead.
  *
+ * <p>It also verifies the signed DevTools override cookie ({@code se_ov}) once
+ * per request and scopes the result to the request thread, so {@link Client}
+ * reads honor overrides a signed-in DevTools overlay set (fail-closed; needs the
+ * project's override key served by Shipeasy). Equivalent to wrapping the request
+ * in {@link Shipeasy#withRequestOverrides(String, Runnable)}.
+ *
  * <p>It also reads the browser SDK's {@code X-SE-Correlation} request header
  * into the request-local {@code see()} context ({@link SeeExtras}), so every
  * {@code see()} fired while serving the request carries that
@@ -63,6 +69,8 @@ public final class AnonIdFilter implements Filter {
         }
         AnonId.setCurrent(id);
         SeeExtras.setCorrelationId(req.getHeader(CORRELATION_HEADER));
+        // Signed DevTools overrides (se_ov cookie): verified once here, scoped to this request.
+        OverrideCookie.Overrides prevOverrides = RequestOverrides.enter(req.getHeader("Cookie"));
         try {
             chain.doFilter(request, response);
         } finally {
@@ -70,6 +78,7 @@ public final class AnonIdFilter implements Filter {
             // token — onto the next request handled by this pooled thread.
             AnonId.clear();
             SeeExtras.clear();
+            RequestOverrides.restore(prevOverrides);
         }
     }
 

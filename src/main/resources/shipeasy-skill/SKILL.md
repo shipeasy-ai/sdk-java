@@ -21,7 +21,7 @@ Maven (`ai.shipeasy:shipeasy`):
 <dependency>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.21.0</version>
+  <version>0.22.0</version>
 </dependency>
 ```
 
@@ -114,6 +114,18 @@ nothing); `violation("name")...to("...")` for non-throwable problems. Reference:
 `AnonIdFilter` also reads the browser SDK's `X-SE-Correlation` header, so every
 `see()` in that request carries `correlation_id` and Shipeasy links the
 browser's error to this server exception — no code needed.
+
+## DevTools overrides on the server
+
+Signed-in DevTools overrides (flags, kill switches, configs, experiment groups,
+incl. `?se_gate_x=true`) travel in a signed `se_ov` cookie. `AnonIdFilter`
+verifies it once per request; other stacks wrap handling in
+`Shipeasy.withRequestOverrides(request.getHeader("Cookie"), () -> ...)` (Runnable
+or Supplier). `Client` reads inside then honor it (`getFlagDetail` reason
+`OVERRIDE`). Precedence: `Shipeasy.overrideFlag` > cookie > evaluation.
+Fail-closed: needs the project's override key served by Shipeasy, a valid
+unexpired signature; an unsigned `?se_gate_` param alone stays client-only.
+Reference: <https://shipeasy-ai.github.io/sdk-java/pages/advanced.md>
 
 ## Testing (no network, no key)
 

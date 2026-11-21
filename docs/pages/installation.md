@@ -13,20 +13,20 @@
 <dependency>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.21.0</version>
+  <version>0.22.0</version>
 </dependency>
 ```
 
 ### Gradle (Kotlin DSL)
 
 ```kotlin
-implementation("ai.shipeasy:shipeasy:0.21.0")
+implementation("ai.shipeasy:shipeasy:0.22.0")
 ```
 
 ### Gradle (Groovy DSL)
 
 ```groovy
-implementation 'ai.shipeasy:shipeasy:0.21.0'
+implementation 'ai.shipeasy:shipeasy:0.22.0'
 ```
 
 ## Optional, `provided`-scope dependencies
@@ -237,6 +237,11 @@ import jakarta.servlet.annotation.WebFilter;
 @WebFilter("/*")
 public class ShipeasyAnonId extends AnonIdFilter {}
 ```
+
+The same filter verifies the signed DevTools `se_ov` cookie once per request, so
+overrides from a signed-in DevTools overlay reach server-side `Client` reads
+(see [Advanced](advanced.md); non-servlet stacks use
+`Shipeasy.withRequestOverrides(cookieHeader, () -> ...)`).
 
 In a Spring Boot servlet stack, register the same filter as a bean:
 

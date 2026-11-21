@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.22.0 — 2026-11-21
+
+### Signed DevTools overrides reach server-side reads (shipeasy ops #714)
+
+The browser DevTools overlay mirrors its overrides (including `?se_gate_x=true`
+URL state) into a signed `se_ov` cookie, but server reads never saw them.
+`AnonIdFilter` now verifies that cookie once per request (HMAC-SHA256 against the
+project override key Shipeasy serves on `/sdk/flags`) and scopes the result to the
+request thread; `Client.getFlag`/`getFlagDetail` (reason `OVERRIDE`),
+`getKillswitch` (whole-switch), `getConfig` and `universe(name).assign()` honor it.
+Other stacks use the new `Shipeasy.withRequestOverrides(cookieHeader, Runnable |
+Supplier)`. Precedence: programmatic `overrideFlag` > signed cookie > evaluation.
+Fail-closed: no served key, bad/expired signature or wrong key id means no
+overrides; unsigned `?se_gate_` params stay client-only.
+
 ## 0.21.0 — 2026-11-19
 
 ### see() reports carry the browser's request correlation token

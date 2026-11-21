@@ -47,7 +47,7 @@ d.reason();  // one of the FlagDetail.* reason constants
 
 | Reason (`FlagDetail.*`) | Meaning |
 | --- | --- |
-| `OVERRIDE` | An override was set (short-circuits; no telemetry). |
+| `OVERRIDE` | An override was set — programmatic, or a signed DevTools `se_ov` cookie override in scope (see [Advanced](advanced.md)); short-circuits, no telemetry. |
 | `CLIENT_NOT_READY` | No blob fetched yet (engine not initialized). |
 | `FLAG_NOT_FOUND` | The flag is not present in the fetched blob. |
 | `OFF` | The flag is disabled or kill-switched. |

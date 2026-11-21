@@ -33,7 +33,7 @@ public final class Engine implements AutoCloseable {
     private static final String DEFAULT_CDN_BASE = "https://cdn.shipeasy.ai";
 
     /** Single runtime source of the SDK version (used for {@code sdk_version}). */
-    public static final String VERSION = "0.21.0";
+    public static final String VERSION = "0.22.0";
 
     private final String apiKey;
     private final String baseUrl;
@@ -319,6 +319,20 @@ public final class Engine implements AutoCloseable {
         experimentOverrides.put(name, new ExperimentResult(true, group, params));
     }
 
+    /** Project override verify key (base64url) served on {@code /sdk/flags}; {@code null} = overrides never trusted. */
+    String overrideKey() {
+        Map<String, Object> b = flagsBlob;
+        Object k = b == null ? null : b.get("overrideKey");
+        return k instanceof String && !((String) k).isEmpty() ? (String) k : null;
+    }
+
+    /** Key id paired with {@link #overrideKey()}. */
+    String overrideKeyId() {
+        Map<String, Object> b = flagsBlob;
+        Object k = b == null ? null : b.get("overrideKeyId");
+        return k instanceof String && !((String) k).isEmpty() ? (String) k : null;
+    }
+
     /** Remove every override previously set on this client. */
     public void clearOverrides() {
         flagOverrides.clear();
@@ -410,6 +424,12 @@ public final class Engine implements AutoCloseable {
     private FlagDetail getFlagDetailImpl(String name, Map<String, Object> user) {
         Boolean override = flagOverrides.get(name);
         if (override != null) return new FlagDetail(override, FlagDetail.OVERRIDE);
+        // Signed DevTools cookie override (request-scoped): below programmatic, above evaluation.
+        OverrideCookie.Overrides cookieOv = RequestOverrides.current();
+        if (cookieOv != null) {
+            Boolean cv = cookieOv.gates.get(name);
+            if (cv != null) return new FlagDetail(cv, FlagDetail.OVERRIDE);
+        }
 
         telemetry.emit("gate", name);
 
@@ -478,6 +498,11 @@ public final class Engine implements AutoCloseable {
     private Object getConfigImpl(String name) {
         Object override = configOverrides.get(name);
         if (override != null) return override;
+        OverrideCookie.Overrides cookieOv = RequestOverrides.current();
+        if (cookieOv != null) {
+            Object cv = cookieOv.configs.get(name);
+            if (cv != null) return cv;
+        }
         telemetry.emit("config", name);
         Map<String, Object> blob = flagsBlob;
         if (blob == null) return null;
@@ -529,6 +554,14 @@ public final class Engine implements AutoCloseable {
 
     @SuppressWarnings("unchecked")
     private boolean getKillswitchImpl(String name, String switchKey) {
+        // Whole-switch reads share the cookie's gate namespace; per-key reads are left alone.
+        if (switchKey == null) {
+            OverrideCookie.Overrides cookieOv = RequestOverrides.current();
+            if (cookieOv != null) {
+                Boolean cv = cookieOv.gates.get(name);
+                if (cv != null) return cv;
+            }
+        }
         telemetry.emit("ks", name);
         Map<String, Object> blob = flagsBlob;
         if (blob == null) return false;
@@ -586,6 +619,23 @@ public final class Engine implements AutoCloseable {
         ExperimentResult override = experimentOverrides.get(name);
         if (override != null) {
             return Eval.ExpStanding.group(override.group, Eval.mergeParams(paramDefaults, override.params));
+        }
+        OverrideCookie.Overrides cookieOv = RequestOverrides.current();
+        if (cookieOv != null && exp != null) {
+            String forced = cookieOv.exps.get(name);
+            if (forced != null) {
+                Object gp = null;
+                Object gl = exp.get("groups");
+                if (gl instanceof List) {
+                    for (Object g : (List<Object>) gl) {
+                        if (g instanceof Map && forced.equals(((Map<String, Object>) g).get("name"))) {
+                            gp = ((Map<String, Object>) g).get("params");
+                            break;
+                        }
+                    }
+                }
+                return Eval.ExpStanding.group(forced, Eval.mergeParams(paramDefaults, gp));
+            }
         }
         if (flagsBlob == null || exps == null || exp == null) return Eval.ExpStanding.OUT;
         if (!"running".equals(exp.get("status"))) return Eval.ExpStanding.OUT;

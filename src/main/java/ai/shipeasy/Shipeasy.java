@@ -547,6 +547,26 @@ public final class Shipeasy {
     }
 
     /**
+     * Run {@code body} with the request's signed DevTools override cookie
+     * ({@code se_ov}) in scope, so {@link Client} reads inside it honor the
+     * overrides a signed-in DevTools overlay set (flags, kill switches, configs,
+     * experiment groups). {@code cookieHeader} is the raw {@code Cookie} request
+     * header (or the bare cookie value). Verified once, at entry; fail-closed (no
+     * override key served, bad/expired signature, no cookie: reads unchanged).
+     * Precedence: {@link #overrideFlag} &gt; signed cookie &gt; normal evaluation.
+     * The scope is thread-local and always restored. Servlet apps get this from
+     * {@link AnonIdFilter}; use this for any other stack.
+     */
+    public static void withRequestOverrides(String cookieHeader, Runnable body) {
+        RequestOverrides.with(cookieHeader, () -> { body.run(); return null; });
+    }
+
+    /** As {@link #withRequestOverrides(String, Runnable)}, returning {@code body}'s result. */
+    public static <T> T withRequestOverrides(String cookieHeader, java.util.function.Supplier<T> body) {
+        return RequestOverrides.with(cookieHeader, body);
+    }
+
+    /**
      * Register a listener fired after a background poll fetches NEW data. Returns
      * an unsubscribe {@link Runnable}. Requires {@code configure(options(key).poll(true))}.
      */
