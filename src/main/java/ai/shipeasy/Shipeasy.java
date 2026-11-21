@@ -579,12 +579,29 @@ public final class Shipeasy {
      * {@link AnonIdFilter}; use this for any other stack.
      */
     public static void withRequestOverrides(String cookieHeader, Runnable body) {
-        RequestOverrides.with(cookieHeader, () -> { body.run(); return null; });
+        RequestOverrides.with(cookieHeader, null, () -> { body.run(); return null; });
+    }
+
+    /**
+     * As {@link #withRequestOverrides(String, Runnable)}, also taking the
+     * {@code X-Shipeasy-Overrides} request header (cookie-header syntax) for APIs
+     * on a sibling subdomain that never receive the cookie. The {@code Cookie}
+     * header wins per cookie name; the custom header fills in when absent. Pass
+     * {@code null} for either.
+     */
+    public static void withRequestOverrides(String cookieHeader, String overridesHeader, Runnable body) {
+        RequestOverrides.with(cookieHeader, overridesHeader, () -> { body.run(); return null; });
+    }
+
+    /** As {@link #withRequestOverrides(String, String, Runnable)}, returning {@code body}'s result. */
+    public static <T> T withRequestOverrides(String cookieHeader, String overridesHeader,
+                                             java.util.function.Supplier<T> body) {
+        return RequestOverrides.with(cookieHeader, overridesHeader, body);
     }
 
     /** As {@link #withRequestOverrides(String, Runnable)}, returning {@code body}'s result. */
     public static <T> T withRequestOverrides(String cookieHeader, java.util.function.Supplier<T> body) {
-        return RequestOverrides.with(cookieHeader, body);
+        return RequestOverrides.with(cookieHeader, null, body);
     }
 
     /**

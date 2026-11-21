@@ -138,8 +138,14 @@ final class OverrideCookie {
      * (or a bare value). {@code null} when absent or malformed (never throws).
      */
     static Overrides parseDev(String input) {
+        return parseDev(input, null);
+    }
+
+    /** As {@link #parseDev(String)}; {@code fallback} (the X-Shipeasy-Overrides value) fills in when the cookie is absent. */
+    static Overrides parseDev(String input, String fallback) {
         try {
             String raw = extractNamed(input, DEV_COOKIE_NAME, false);
+            if (raw == null) raw = extractNamed(fallback, DEV_COOKIE_NAME, false);
             if (raw == null) return null;
             Object parsed = MAPPER.readValue(new String(b64uDecode(raw), StandardCharsets.UTF_8), Object.class);
             if (!(parsed instanceof Map)) return null;
@@ -160,9 +166,10 @@ final class OverrideCookie {
 
     private static String extractNamed(String input, String name, boolean signed) {
         if (input == null || input.isEmpty()) return null;
-        if (!input.contains(";") && !input.contains(name + "=")) {
-            // bare value: signed is body.sig; dev has no dot and no '='
-            return signed ? (input.contains(".") ? input : null) : (input.contains("=") ? null : input);
+        if (input.indexOf('=') < 0 && input.indexOf(';') < 0) {
+            // Bare value only when it has neither '=' nor ';'; anything else is a Cookie
+            // header (so an unrelated `theme=a.b` is never mistaken for se_ov).
+            return signed ? (input.contains(".") ? input : null) : input;
         }
         for (String part : input.split(";")) {
             int eq = part.indexOf('=');

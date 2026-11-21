@@ -49,6 +49,9 @@ import java.io.IOException;
  */
 public final class AnonIdFilter implements Filter {
 
+    /** Header carrying the override cookies for APIs on a sibling subdomain (cookie-header syntax). */
+    public static final String OVERRIDES_HEADER = "X-Shipeasy-Overrides";
+
     /** Request header the browser SDK sends on every same-origin request. */
     public static final String CORRELATION_HEADER = "X-SE-Correlation";
 
@@ -70,7 +73,8 @@ public final class AnonIdFilter implements Filter {
         AnonId.setCurrent(id);
         SeeExtras.setCorrelationId(req.getHeader(CORRELATION_HEADER));
         // Signed DevTools overrides (se_ov cookie): verified once here, scoped to this request.
-        OverrideCookie.Overrides prevOverrides = RequestOverrides.enter(req.getHeader("Cookie"));
+        OverrideCookie.Overrides prevOverrides = RequestOverrides.enter(
+            req.getHeader("Cookie"), req.getHeader(OVERRIDES_HEADER));
         try {
             chain.doFilter(request, response);
         } finally {

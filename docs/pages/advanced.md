@@ -124,6 +124,28 @@ parameter on its own is **client-only by design** — it never reaches server
 reads. The scope is thread-local; if you hand work to another thread, wrap it
 again with the same header.
 
+### Frontend and API on different subdomains
+
+With the frontend on `app.example.com` and the API on `api.example.com`, the
+browser SDK scopes the `se_ov` / `se_ov_dev` cookies to the registrable domain
+(auto-detected, or set `overrideCookieDomain` in the browser `configure()`), so
+the API receives them like any other cookie and the filter / scope above just
+works. For token-auth APIs that do not get cookies, the browser SDK's
+`getOverrideHeaders()` returns an `X-Shipeasy-Overrides` header (cookie-header
+syntax, e.g. `se_ov=...; se_ov_dev=...`; allow it in the API's CORS
+`Access-Control-Allow-Headers`). `AnonIdFilter` reads it automatically; for the
+manual scope pass it as the second argument. The `Cookie` header wins per cookie
+name, the header fills in when the cookie is absent, and the same verification
+and guards apply (a signed value must verify; `se_ov_dev` is never even parsed
+unless `devOverrides` is on in a non-production process).
+
+```java
+Shipeasy.withRequestOverrides(
+    request.getHeader("Cookie"),
+    request.getHeader("X-Shipeasy-Overrides"), // optional, may be null
+    () -> handle(request));
+```
+
 ### Local dev without sign-in — `devOverrides` (`se_ov_dev`)
 
 On a local/dev/test stack you can opt in to an **unsigned** cookie so
