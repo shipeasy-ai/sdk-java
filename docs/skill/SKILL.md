@@ -21,7 +21,7 @@ Maven (`ai.shipeasy:shipeasy`):
 <dependency>
   <groupId>ai.shipeasy</groupId>
   <artifactId>shipeasy</artifactId>
-  <version>0.22.0</version>
+  <version>0.23.0</version>
 </dependency>
 ```
 
